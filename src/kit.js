@@ -33,6 +33,7 @@ const WATER_METAL = /iron|metal|nail|chain|ring|lifting eye|cap|brass|oarlock|ho
 const KEEP = /_CarvedHull$|_Deck$|_Quarterdeck$|_CannonMuzzle_|_Sail|_Flag_|_Beach$|_Dock_/;
 
 export const kit = {};
+export const glows = [];
 export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}models/${path.includes('/') ? path : 'kit/' + path}.glb`).then(g => {
   const f = path.split('/').pop(), water = path.startsWith('water/');
   const seen = new Set();
@@ -52,12 +53,16 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     }
     if (water) {
       if (!WATER_METAL.test(o.material.name)) o.material.metalness = 0;
-      // The buoy's lamp glows.
-      if (/light/i.test(o.material.name)) { o.material.emissive = o.material.color.clone(); o.material.emissiveIntensity = 1.6; }
     } else {
       const metal = METAL.test(o.name) || f === 'token_doubloon';
       o.material.metalness = metal ? .55 : 0;
       o.material.roughness = metal ? .4 : /Ruby|Emerald/.test(o.name) ? .45 : .8;
+    }
+    // Lamps and lit windows: they glow after dark (the atmosphere raises their intensity as the light fails).
+    if (/window|lantern|warm buoy light/i.test(o.material.name) && !glows.some(g => g.mat === o.material)) {
+      o.material.emissive = o.material.color.clone();
+      o.material.emissiveIntensity = .4;
+      glows.push({ mat: o.material, k: /lantern|buoy/i.test(o.material.name) ? 1.2 : .8 });
     }
     o.material.envMapIntensity = .45; // the board's room reflections otherwise wash flat tops out to white
     if (/Sail|Flag|Wing|Fin|Canvas/.test(o.name)) o.material.side = THREE.DoubleSide;

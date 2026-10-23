@@ -228,12 +228,14 @@ setupGod({
     world.winBattle();
   },
   heal() { const p = world.player; p.hp = p.maxHp; p.sinking = 0; world.lost = false; world.ui.battleHud(world.state === 'battle' ? p : null, world.boss); },
+  atmo: () => world.atmo,
+  post: () => world.post,
   immortal: () => !!world.immortal,
   setImmortal(v) { world.immortal = v; },
   speed: () => speed,
   setSpeed(v) { speed = v; },
   state: () => ({
-    version: '0.2.0', mode, save: { ...save }, state: world.state,
+    version: '0.2.0', mode, gfx: { quality: world.post.quality, hour: +world.atmo.hour.toFixed(1), storm: +world.atmo.storm.toFixed(2) }, save: { ...save }, state: world.state,
     pos: world.player.pos.toArray().map(v => Math.round(v)), heading: +world.player.heading.toFixed(2),
     hp: world.player.hp, boss: { hp: world.boss.hp, sinking: +world.boss.sinking.toFixed(2), gone: !!world.bossGone },
     target: world.target() && world.target().name,

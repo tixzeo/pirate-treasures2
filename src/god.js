@@ -56,6 +56,9 @@ export function setupGod(api) {
     god() { api.setImmortal(!api.immortal()); render(); },
     speed() { api.setSpeed(api.speed() === 1 ? 3 : 1); render(); },
     fps() { fps.hidden = !fps.hidden; render(); },
+    time(h) { const a = api.atmo(); if (h === 'auto') a.auto = true; else { a.auto = false; a.setTime(h); } render(); },
+    weather(w) { api.atmo().setWeather(w); render(); },
+    quality(q) { api.post().setQuality(q); render(); },
     async copy() {
       const text = JSON.stringify({ ...api.state(), errors: errors.slice(-10), agent: navigator.userAgent, at: new Date().toISOString() }, null, 2);
       const out = panel.querySelector('#godOut');
@@ -105,6 +108,18 @@ export function setupGod(api) {
           <button type="button" data-a="speed" class="${api.speed() > 1 ? 'on' : ''}">Скорость ×${api.speed()}</button>
           <button type="button" data-a="fps" class="${fps.hidden ? '' : 'on'}">FPS</button>
         </div>
+      </section>
+      <section>
+        <h3>Графика</h3>
+        ${(() => {
+          const a = api.atmo(), q = api.post().quality, w = a.weatherAuto ? 'auto' : a.stormGoal >= 1 ? 'storm' : a.stormGoal > 0 ? 'cloudy' : 'clear';
+          const b = (act, i, label, on) => `<button type="button" data-a="${act}" data-i="${i}" class="${on ? 'on' : ''}">${label}</button>`;
+          return `
+        <p class="note">Время: ${String(Math.floor(a.hour)).padStart(2, '0')}:${String(Math.floor(a.hour % 1 * 60)).padStart(2, '0')}</p>
+        <div class="row">${b('time', 'auto', 'Сутки идут', a.auto)}${b('time', 6.3, 'Рассвет', false)}${b('time', 13, 'День', false)}${b('time', 18.1, 'Закат', false)}${b('time', 23, 'Ночь', false)}</div>
+        <div class="row">${b('weather', 'auto', 'Погода сама', w === 'auto')}${b('weather', 'clear', 'Ясно', w === 'clear')}${b('weather', 'cloudy', 'Пасмурно', w === 'cloudy')}${b('weather', 'storm', 'Шторм', w === 'storm')}</div>
+        <div class="row">${b('quality', 'low', 'Качество: низкое', q === 'low')}${b('quality', 'medium', 'среднее', q === 'medium')}${b('quality', 'high', 'высокое', q === 'high')}</div>`;
+        })()}
       </section>
       <section>
         <h3>Для багрепорта</h3>

@@ -6,6 +6,8 @@ import { kitReady } from './kit.js';
 import { ISLANDS, BOSS_HOME, SCENERY } from './islands.js';
 import { Effects } from './fx.js';
 import { SeaLife } from './life.js';
+import { Atmosphere } from './atmosphere.js';
+import { Post, pickQuality } from './post.js';
 import { character } from './characters.js';
 import { sfx } from './sound.js';
 
@@ -24,10 +26,12 @@ export class World {
     this.ui = ui;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, 1, .5, 5000);
-    const { light, sun } = addSky(this.scene, renderer);
+    const { light, sun, sky, hemi } = addSky(this.scene, renderer);
     this.light = light;
     this.sea = new Sea(this.scene, sun);
-    addClouds(this.scene);
+    const clouds = addClouds(this.scene);
+    this.atmo = new Atmosphere(this, { light, sky, hemi, clouds, sea: this.sea, renderer });
+    this.post = new Post(renderer, this, pickQuality());
     this.fx = new Effects(this.scene);
 
     // Player: the brigantine from part one's shipyard.
@@ -74,6 +78,13 @@ export class World {
     this.bossBeaten = false;
     this.crew = {};
     // Артем's models replace the built-in ships and islands as soon as they are in; the crew boards after that.
+    // Deck lanterns on both ships: off by day, warm pools of light on deck after dusk.
+    this.lamps = [[this.player, '#ffb25a'], [this.boss, '#ff6a9a']].map(([v, col]) => {
+      const l = new THREE.PointLight(col, 0, 22, 1.6);
+      l.position.set(0, 2.4, 3.5);
+      v.mesh.add(l);
+      return l;
+    });
     this.life = new SeaLife(this);
     this.kitDone = kitReady.then(() => this.applyKit()).catch(e => console.warn('World kit not applied', e));
     this.loadCrew();
@@ -158,7 +169,7 @@ export class World {
     }
   }
 
-  resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+  resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.post.resize(); }
 
   // How the ship lies against the nearest open berth: distance, angle off the pier line, speed, and whether each is good enough.
   dockState() {
@@ -398,7 +409,11 @@ export class World {
     }
 
     this.updateCamera(dt);
-    this.light.position.copy(p.pos).add(new THREE.Vector3(25, 80, 60));
+    this.atmo.update(dt, this.camera);
+    for (const l of this.lamps) l.intensity = 16 * this.atmo.night;
+    // Shadows never lie flatter than about 11 degrees, however low the sun.
+    const ld = this.atmo.keyDir.clone(); ld.y = Math.max(ld.y, .2); ld.normalize();
+    this.light.position.copy(p.pos).addScaledVector(ld, 100);
     this.light.target.position.copy(p.pos);
 
     this.ui.sailHud({
@@ -588,5 +603,5 @@ export class World {
     this.camPos.copy(from).add(new THREE.Vector3(0, 12, 28));
   }
 
-  render() { this.renderer.render(this.scene, this.camera); }
+  render() { this.post.render(); }
 }

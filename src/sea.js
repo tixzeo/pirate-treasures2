@@ -10,9 +10,12 @@ const SWELLS = [
 ];
 for (const s of SWELLS) { const l = Math.hypot(...s.dir); s.dir = [s.dir[0] / l, s.dir[1] / l]; s.k = Math.PI * 2 / s.len; }
 
+// Rough weather lifts every swell by this factor, in the mesh and in what ships ride on.
+export const swell = { k: 1 };
+
 export function waveHeight(x, z, t) {
   let h = 0;
-  for (const s of SWELLS) h += s.amp * Math.sin((x * s.dir[0] + z * s.dir[1]) * s.k + t * s.speed);
+  for (const s of SWELLS) h += s.amp * swell.k * Math.sin((x * s.dir[0] + z * s.dir[1]) * s.k + t * s.speed);
   return h;
 }
 
@@ -108,6 +111,11 @@ const fragment = /* glsl */`
   uniform float uRippleK;              // how hard the ripple map bends the light
   uniform sampler2D uFoam;             // foam pattern in alpha
   uniform vec3 uSand;
+  uniform float uLight;                // how much daylight there is: 1 at noon, about 0.1 on a moonlit night
+  uniform float uWhite;                // extra whitecaps in rough weather
+  uniform sampler2D uRefl;             // the scene as the water mirrors it (high quality only)
+  uniform mat4 uReflMatrix;
+  uniform float uUseRefl;
   uniform vec4 uShips[2];              // x, z, heading, speed
   uniform vec2 uShipSize[2];           // half length, half width
   uniform vec3 uFogColor;
@@ -201,8 +209,19 @@ const fragment = /* glsl */`
     float caustic = pow(1.0 - abs(noise(p * 0.45 + uTime * 0.12) * 2.0 - 1.0), 8.0) + pow(1.0 - abs(noise(p * 0.7 - uTime * 0.1 + 9.0) * 2.0 - 1.0), 8.0);
     body = mix(body, uSand, sand * 0.55);
     body += vec3(0.9, 1.0, 0.95) * caustic * lagoon * 0.18;
+    body *= uLight;
 
-    vec3 col = mix(body, skyColor(reflect(-view, n)), fres * 0.85);
+    // What the surface mirrors: the sky, and on high quality the islands and ships too.
+    vec3 mirror = skyColor(reflect(-view, n));
+    if (uUseRefl > 0.5) {
+      vec4 rc = uReflMatrix * vec4(vWorld, 1.0);
+      if (rc.w > 0.0) {
+        vec2 ruv = rc.xy / rc.w + n.xz * 0.12;
+        vec2 edge = smoothstep(vec2(0.0), vec2(0.05), min(ruv, 1.0 - ruv));
+        mirror = mix(mirror, texture2D(uRefl, clamp(ruv, 0.001, 0.999)).rgb, edge.x * edge.y * 0.8);
+      }
+    }
+    vec3 col = mix(body, mirror, fres * 0.85);
 
     // Sun glint.
     vec3 h = normalize(uSunDir + view);
@@ -210,7 +229,7 @@ const fragment = /* glsl */`
     col += uSunColor * (pow(nh, 400.0) * 3.0 + pow(nh, 60.0) * 0.05);
 
     // Foam on wave crests, at the shore, around the hulls and in the wakes.
-    float crest = smoothstep(0.78, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
+    float crest = smoothstep(0.78 - uWhite * 0.35, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
     float wake = 0.0;
     for (int i = 0; i < ${TRAIL}; i++) {
       vec4 t = uTrail[i];
@@ -224,7 +243,7 @@ const fragment = /* glsl */`
     float lace = texture2D(uFoam, p * 0.11 + uTime * vec2(0.012, 0.004)).a * 0.65 + texture2D(uFoam, p * 0.27 - uTime * vec2(0.006, 0.015)).a * 0.35;
     float amount = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7 + ships, 0.0, 1.0);
     float foam = amount * smoothstep(0.12, 0.5, lace + amount * 0.45);
-    col = mix(col, vec3(0.95, 0.98, 1.0), foam);
+    col = mix(col, vec3(0.95, 0.98, 1.0) * (0.2 + 0.8 * uLight), foam);
 
     col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
     gl_FragColor = vec4(col, 1.0);
@@ -250,6 +269,11 @@ export class Sea {
       uGlow: { value: new THREE.Color('#2fc4b2') },
       uRipples: { value: rippleNormals() },
       uRippleK: { value: 1 },
+      uLight: { value: 1 },
+      uWhite: { value: 0 },
+      uRefl: { value: new THREE.DataTexture(new Uint8Array([120, 160, 200, 255]), 1, 1) },
+      uReflMatrix: { value: new THREE.Matrix4() },
+      uUseRefl: { value: 0 },
       uFoam: { value: blankFoam() },
       uSand: { value: new THREE.Color('#e9d9a6') },
       uShips: { value: [new THREE.Vector4(), new THREE.Vector4()] },
@@ -262,6 +286,7 @@ export class Sea {
       uIsles: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector3()) },
       uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
     };
+    this.uniforms.uRefl.value.needsUpdate = true;
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vertex, fragmentShader: fragment }));
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
@@ -315,6 +340,8 @@ export class Sea {
   // The grid follows the camera in whole cells so the waves stay put in the world.
   update(t, center) {
     this.uniforms.uTime.value = t;
+    SWELLS.forEach((s, i) => { this.uniforms.uAmp.value[i] = s.amp * swell.k; });
+    this.uniforms.uWhite.value = (swell.k - 1) * 1.1;
     this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
   }
 }
@@ -340,6 +367,7 @@ export function addClouds(scene) {
     clouds.add(c);
   }
   scene.add(clouds);
+  clouds.userData.mat = mat;
   return clouds;
 }
 
@@ -353,7 +381,8 @@ export function addSky(scene, renderer) {
   scene.add(sky);
   scene.fog = new THREE.Fog('#b9dbe6', 110, 340);
 
-  scene.add(new THREE.HemisphereLight('#d6ecff', '#1d5a6a', 1.25));
+  const hemi = new THREE.HemisphereLight('#d6ecff', '#1d5a6a', 1.25);
+  scene.add(hemi);
   const light = new THREE.DirectionalLight('#fff1d6', 2.6);
   light.castShadow = true;
   light.shadow.mapSize.set(2048, 2048);
@@ -363,5 +392,5 @@ export function addSky(scene, renderer) {
   scene.add(light, light.target);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = .62;
-  return { light, sun };
+  return { light, sun, sky, hemi };
 }

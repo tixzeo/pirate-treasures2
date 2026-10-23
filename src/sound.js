@@ -51,6 +51,7 @@ const SOUNDS = {
   forge: () => { tone(880, .3, { type: 'triangle', vol: .2 }); tone(1320, .3, { vol: .15, delay: .08 }); },
   cannon: () => { noise(.5, { vol: .8, freq: 500 }); tone(90, .4, { type: 'sine', vol: .5, slide: .5 }); },
   boom: () => { noise(.9, { vol: 1, freq: 350 }); tone(60, .6, { vol: .6, slide: .5 }); },
+  thunder: () => { noise(2.4, { vol: .9, freq: 200 }); tone(48, 1.6, { vol: .5, slide: .6 }); },
   splash: () => noise(.4, { vol: .25, freq: 1800 }),
   hit: () => { noise(.35, { vol: .6, freq: 1200 }); tone(140, .25, { type: 'square', vol: .15, slide: .6 }); },
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, .3, { type: 'triangle', vol: .25, delay: i * .12 })),
