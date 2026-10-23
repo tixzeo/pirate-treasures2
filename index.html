@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Пиратские сокровища 2</title>
+<link rel="stylesheet" href="./fonts/fonts.css">
+<link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <div class="top">
+    <span class="plaque" id="gold">0</span>
+    <div class="compass" id="compass"><i class="n"></i></div>
+    <button class="ghost" id="soundBtn" type="button" aria-pressed="true">Звук</button>
+  </div>
+  <div class="bars" id="bars" hidden>
+    <div class="bar me"><span>Ваш корабль</span><b><i id="myHp"></i></b></div>
+    <div class="bar foe"><span>«Каракатица»</span><b><i id="foeHp"></i></b></div>
+  </div>
+  <div class="speed" id="speed"></div>
+  <div class="stick" id="stick"><i></i></div>
+  <div class="guns">
+    <button type="button" id="fireL" class="gun">◀ Залп<i></i></button>
+    <button type="button" id="fireR" class="gun">Залп ▶<i></i></button>
+  </div>
+  <button type="button" id="dock" class="dock" hidden>Сойти на берег</button>
+  <p class="keys" id="keys">W/S — паруса, A/D — руль, Q/E — залп, Enter — на берег</p>
+</div>
+
+<div id="matchHud" hidden>
+  <header>
+    <button class="ghost" id="leave" type="button">← К кораблю</button>
+    <h1 id="isleName">Остров</h1>
+  </header>
+  <div class="stats">
+    <div class="stat"><span>Ходы</span><b id="mMoves">0</b></div>
+    <div class="stat"><span>Очки</span><b id="mScore">0</b><small id="mNeed"></small></div>
+    <div class="stat"><span>Золото</span><b id="mGold">0</b></div>
+  </div>
+  <div class="goalbar"><i id="mGoal"></i></div>
+</div>
+
+<div class="flash" id="flash"></div>
+<div class="banner" id="banner" hidden><h2></h2><p></p></div>
+<div class="dialog" id="dialog" hidden><div class="card"><h2></h2><p></p><div class="haul"></div><div class="btns"></div></div></div>
+
+<div class="intro" id="intro">
+  <div class="card">
+    <h1>Пиратские сокровища 2</h1>
+    <p>Капитан, корабль готов! Поднимайте паруса и ищите остров, отмеченный крестом: там зарыт клад. Но берегитесь, в этих водах ходит «Каракатица» капитана Шрама.</p>
+    <button type="button" id="go">Поднять паруса</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
