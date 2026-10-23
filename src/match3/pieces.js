@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CANNON_ROW, CANNON_COL, BARREL, COMPASS } from './board.js';
 import { pbr } from '../materials.js';
+import { hasKit, part } from '../kit.js';
 
 // 3D versions of the part-one treasures. Each builder returns a group about one cell wide.
 const M = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: .35, metalness: .2, flatShading: true, ...o });
@@ -134,9 +135,24 @@ function compassBomb() {
 const BUILD = [coin, ruby, emerald, shell, compass, anchor, skull, null,
   () => cannonball(true), () => cannonball(false), barrel, compassBomb];
 
+// Артем's pieces from the World Kit for the treasures he has made; the rest keep the built-in shapes.
+// The kit models lie flat (Y up), so they are stood up to face the board's +Z and sized to a cell.
+const KIT_PIECES = { 0: 'token_doubloon', 1: 'token_ruby', 2: 'token_emerald', 3: 'token_seashell', 4: 'token_compass' };
+function kitPiece(name) {
+  const m = part(name);
+  const box = new THREE.Box3().setFromObject(m), size = box.getSize(new THREE.Vector3());
+  const s = .82 / Math.max(size.x, size.z);
+  m.scale.setScalar(s);
+  m.rotation.x = Math.PI / 2;
+  m.position.z = -size.y * s / 2;
+  const g = new THREE.Group();
+  g.add(m);
+  return g;
+}
+
 export function buildPiece(t) {
   const g = new THREE.Group();
-  const inner = BUILD[t]();
+  const inner = KIT_PIECES[t] && hasKit(KIT_PIECES[t]) ? kitPiece(KIT_PIECES[t]) : BUILD[t]();
   inner.traverse(o => { if (o.isMesh) o.castShadow = true; });
   g.add(inner);
   g.userData.inner = inner;

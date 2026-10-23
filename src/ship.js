@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { pbr } from './materials.js';
+import { part, boundsOf } from './kit.js';
 
 // Sailing ship built from code and dressed in the texture pack, so hulls and sails can be swapped like the skins in part one.
 // hull/sail/flag name a material from the pack; the *Tint colours shade it. The bow points to -Z in the ship's own space.
@@ -142,6 +143,46 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
   return g;
 }
 
+// Swap the built-in hull for Артем's model (kit name), scaled to the ship's length. The model brings its own
+// deck heights, cannon muzzles and swaying sails and flags; the built-in shapes stay hidden as a fallback.
+export function dressShip(g, name) {
+  const model = part(name);
+  const hull = boundsOf(model, n => /_CarvedHull$/.test(n));
+  const s = g.userData.length / (hull.max.z - hull.min.z), oz = -(hull.min.z + hull.max.z) / 2 * s;
+  const deck = boundsOf(model, n => /_Deck$/.test(n)), quarter = boundsOf(model, n => /_Quarterdeck$/.test(n));
+  const u = g.userData;
+  // Muzzles are named <Ship>_CannonMuzzle_<side>_<z>; side 1 is starboard (+X). Shots start a little outboard.
+  const muzzles = { left: [], right: [] };
+  model.traverse(o => {
+    const m = /_CannonMuzzle_(-?1)_/.exec(o.name);
+    if (!m) return;
+    const c = boundsOf(model, n => n === o.name).getCenter(new THREE.Vector3());
+    const at = new THREE.Object3D();
+    at.position.set(c.x * s + Math.sign(c.x) * .6, c.y * s, c.z * s + oz);
+    g.add(at);
+    muzzles[m[1] === '1' ? 'right' : 'left'].push(at);
+  });
+  // Seams belong to their sail so they sway with it.
+  const sway = [];
+  model.traverse(o => { if (/_(Sail_\d+_\d+|Flag_\d+)$/.test(o.name)) sway.push(o); });
+  for (const sail of sway) {
+    const key = /_Sail_(\d+_\d+)$/.exec(sail.name);
+    if (!key) continue;
+    model.getObjectsByProperty('isMesh', true).filter(o => o.name.includes(`_SailSeam_${key[1]}_`)).forEach(seam => sail.attach(seam));
+  }
+  sway.forEach((o, i) => { o.userData.rest = o.rotation.clone(); o.userData.phase = i * .7; o.userData.flag = /_Flag_/.test(o.name); });
+  model.scale.setScalar(s);
+  model.position.z = oz;
+  for (const c of g.children) if (c.isMesh) c.visible = false;
+  g.add(model);
+  Object.assign(u, {
+    model, sway, muzzles: muzzles.left.length ? muzzles : u.muzzles, sails: [], flag: null,
+    width: (hull.max.x - hull.min.x) * s,
+    deckY: deck.max.y * s,
+    castle: { y: quarter.max.y * s, z: (quarter.min.z + quarter.max.z) / 2 * s + oz },
+  });
+}
+
 // Sail settings, from going astern to full sail: a share of top speed and a name for the HUD.
 export const SAILS = [
   { v: -.25, name: 'Задний ход' }, { v: 0, name: 'Паруса убраны' }, { v: 1 / 3, name: 'Малый ход' },
@@ -204,6 +245,13 @@ export class Vessel {
     this.mesh.rotation.set(Math.atan2(hb - hs, len * 2) * calm + lift, this.heading, (Math.atan2(hr - hl, wid * 2) * .8 + this.heel) * calm + list, 'YXZ');
 
     for (const s of this.mesh.userData.sails) s.scale.z = .8 + .2 * Math.abs(this.throttle) + .05 * Math.sin(t * 3 + s.id);
+    // Model sails breathe and flags flutter, harder with more sail set.
+    const set = .5 + Math.abs(this.throttle) * .5;
+    for (const o of this.mesh.userData.sway || []) {
+      const r = o.userData.rest, ph = t * (o.userData.flag ? 2.4 : 1.2) + o.userData.phase;
+      o.rotation.y = r.y + Math.sin(ph) * (o.userData.flag ? .13 : .055 * set);
+      o.rotation.z = r.z + Math.sin(ph * .75) * (o.userData.flag ? .04 : .025 * set);
+    }
     const fl = this.mesh.userData.flag;
     if (fl) fl.rotation.y = Math.PI / 2 + Math.sin(t * 4) * .25;
   }

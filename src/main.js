@@ -74,6 +74,24 @@ function setSails(i) {
   if (stickId === null) knob.style.transform = `translate(0, ${-input.throttle * 38}px)`;
 }
 
+// Dragging on the sea turns the view around the ship; the wheel zooms.
+let dragId = null, dragX = 0, dragY = 0;
+canvas.style.touchAction = 'none';
+canvas.addEventListener('pointerdown', e => {
+  if (mode !== 'sea' || dragId !== null) return;
+  dragId = e.pointerId; dragX = e.clientX; dragY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerId !== dragId) return;
+  world.orbit(e.clientX - dragX, e.clientY - dragY);
+  dragX = e.clientX; dragY = e.clientY;
+});
+const dragEnd = e => { if (e.pointerId === dragId) dragId = null; };
+canvas.addEventListener('pointerup', dragEnd);
+canvas.addEventListener('pointercancel', dragEnd);
+canvas.addEventListener('wheel', e => { if (mode === 'sea') { e.preventDefault(); world.zoom(e.deltaY); } }, { passive: false });
+
 const stick = $('stick'), knob = stick.querySelector('i');
 let stickId = null, stickX = 0;
 function stickMove(e) {

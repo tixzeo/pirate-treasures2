@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { pbr } from './materials.js';
+import { part, boundsOf } from './kit.js';
 
 const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .95, flatShading: true, ...extra });
 
@@ -88,8 +89,47 @@ export function buildIsland({ radius = 18, seed = 1, hill = '#a6e07c', sand = '#
   return g;
 }
 
-// Stand-in pier until Артем's model arrives: a plank deck on posts running out from the beach along local +X.
-export const PIER_WIDTH = 4;
+// Piers run out from the beach along local +X. DOCK_SCALE sizes Артем's dock segments (2 units wide, 4 long) for our ships.
+export const DOCK_SCALE = 2.4, DOCK_PITCH = 4 * DOCK_SCALE;
+export const PIER_WIDTH = 2 * DOCK_SCALE, PIER_LENGTH = 3 * DOCK_PITCH;
+
+// Артем's island model in place of the built-in one, sized so its beach meets the water at the island's shore.
+// dir: which way our pier leaves the island; the model is turned so its own dock spot faces that way and its dock is hidden.
+// Without dir (scenery) it just takes a turn from the seed.
+export function dressIsland(isl, name, dir, seed = 1) {
+  const model = part(name);
+  const beach = boundsOf(model, n => /_Beach$/.test(n));
+  const dock = boundsOf(model, n => /_Dock_/.test(n));
+  model.traverse(o => { if (/_Dock_/.test(o.name)) o.visible = false; });
+  const c = beach.getCenter(new THREE.Vector3()), size = beach.getSize(new THREE.Vector3());
+  const s = isl.userData.shore / (Math.max(size.x, size.z) / 2);
+  model.scale.setScalar(s);
+  model.position.set(-c.x * s, .35, -c.z * s);
+  const wrap = new THREE.Group();
+  wrap.add(model);
+  if (dir && !dock.isEmpty()) {
+    const d = dock.getCenter(new THREE.Vector3()).sub(c);
+    wrap.rotation.y = Math.atan2(-dir.z, dir.x) - Math.atan2(-d.z, d.x);
+  } else wrap.rotation.y = seed * 2.39;
+  for (const ch of isl.children) ch.visible = false;
+  isl.add(wrap);
+  isl.userData.model = wrap;
+}
+
+// A pier of Артем's dock segments laid end to end along +X.
+export function buildKitPier(name, segments = 3) {
+  const g = new THREE.Group();
+  for (let i = 0; i < segments; i++) {
+    const seg = part(name);
+    seg.scale.setScalar(DOCK_SCALE);
+    seg.rotation.y = Math.PI / 2; // the segment's +Z becomes the pier's +X
+    seg.position.set(.3 * DOCK_SCALE + i * DOCK_PITCH, .3, 0);
+    g.add(seg);
+  }
+  return g;
+}
+
+// Built-in pier, used until the kit has loaded: a plank deck on posts.
 export function buildPier(length) {
   const g = new THREE.Group();
   const deck = new THREE.Mesh(new THREE.BoxGeometry(length, .3, PIER_WIDTH), pbr('deck_oak', { repeat: [length / 4, 1] }));

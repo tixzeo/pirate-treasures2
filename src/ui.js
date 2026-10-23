@@ -68,8 +68,8 @@ export class UI {
     const next = [...this.marks.values()].find(el => el.classList.contains('next'));
     const nr = next && next.getBoundingClientRect();
     for (const el of this.marks.values()) {
-      if (el === next) continue;
       el.classList.remove('quiet');
+      if (el === next) continue;
       if (!nr) continue;
       const r = el.getBoundingClientRect();
       el.classList.toggle('quiet', r.right > nr.left - 6 && r.left < nr.right + 6);
