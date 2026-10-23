@@ -137,17 +137,30 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
 
   g.userData.length = length;
   g.userData.width = W;
+  g.userData.deckY = H * .5 + .1;
+  g.userData.castle = { y: H * 1.055, z: L * .72 };
   return g;
 }
 
+// Sail settings, from going astern to full sail: a share of top speed and a name for the HUD.
+export const SAILS = [
+  { v: -.25, name: 'Задний ход' }, { v: 0, name: 'Паруса убраны' }, { v: 1 / 3, name: 'Малый ход' },
+  { v: 2 / 3, name: 'Половина парусов' }, { v: 1, name: 'Полный ход' },
+];
+export const sailIndex = throttle => SAILS.reduce((best, s, i) => Math.abs(s.v - throttle) < Math.abs(SAILS[best].v - throttle) ? i : best, 0);
+
 // Moves a ship on the sea: heading, speed, bob and roll from the waves.
+// A ship has weight: the sails take a few seconds to drive her up to speed, she coasts a long way,
+// the wheel takes time to turn, and the rudder only bites while water flows past it.
 export class Vessel {
   constructor(mesh, { maxSpeed = 14, turnRate = .9, hp = 100 } = {}) {
     this.mesh = mesh;
     this.heading = 0;   // radians, 0 means bow to -Z
     this.speed = 0;
-    this.throttle = 0;  // -0.3..1
-    this.rudder = 0;    // -1..1
+    this.throttle = 0;  // -0.25..1, the sail setting
+    this.rudder = 0;    // -1..1, where the helmsman wants the wheel
+    this.helm = 0;      // -1..1, where the wheel actually is
+    this.yaw = 0;       // current rate of turn, rad/s
     this.maxSpeed = maxSpeed;
     this.turnRate = turnRate;
     this.hp = this.maxHp = hp;
@@ -165,11 +178,16 @@ export class Vessel {
 
   update(dt, t) {
     const target = this.throttle * this.maxSpeed;
-    this.speed += (target - this.speed) * Math.min(1, dt * .8);
-    const steer = this.rudder * this.turnRate * THREE.MathUtils.clamp(Math.abs(this.speed) / 4, .25, 1) * Math.sign(this.speed || 1);
-    this.heading += steer * dt;
+    // Sails drive her up to speed steadily; the water brakes her hard at speed and gently near a stop, so she coasts a long way.
+    const rate = target * Math.sign(this.speed || target) > Math.abs(this.speed) ? this.maxSpeed * .2 : .25 + Math.abs(this.speed) * .18;
+    this.speed += THREE.MathUtils.clamp(target - this.speed, -rate * dt, rate * dt);
+    this.helm += THREE.MathUtils.clamp(this.rudder - this.helm, -1.8 * dt, 1.8 * dt);
+    const bite = THREE.MathUtils.clamp(Math.abs(this.speed) / (this.maxSpeed * .4), 0, 1);
+    const want = this.helm * this.turnRate * bite * Math.sign(this.speed);
+    this.yaw += (want - this.yaw) * Math.min(1, dt * 1.6);
+    this.heading += this.yaw * dt;
     this.pos.addScaledVector(this.forward(), this.speed * dt);
-    this.heel += (-steer * .25 - this.heel) * Math.min(1, dt * 2);
+    this.heel += (-this.yaw * .3 - this.heel) * Math.min(1, dt * 2);
 
     // Sample the waves at bow, stern and both sides for pitch and roll.
     const f = this.forward(), r = this.side('right');

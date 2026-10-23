@@ -88,12 +88,62 @@ export function buildIsland({ radius = 18, seed = 1, hill = '#a6e07c', sand = '#
   return g;
 }
 
-// A ring of light on the water: sail into it to land.
-export function buildBeacon(radius) {
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, .35, 6, 48),
-    new THREE.MeshStandardMaterial({ color: '#ffd76a', emissive: '#ffb300', emissiveIntensity: 1.2, transparent: true, opacity: .8 }));
-  ring.rotation.x = Math.PI / 2;
-  return ring;
+// Stand-in pier until Артем's model arrives: a plank deck on posts running out from the beach along local +X.
+export const PIER_WIDTH = 4;
+export function buildPier(length) {
+  const g = new THREE.Group();
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(length, .3, PIER_WIDTH), pbr('deck_oak', { repeat: [length / 4, 1] }));
+  deck.position.set(length / 2, 1.45, 0);
+  deck.castShadow = deck.receiveShadow = true;
+  g.add(deck);
+  const postMat = pbr('weathered_hull', { repeat: [1, 2], color: '#9a8270' });
+  const postGeo = new THREE.CylinderGeometry(.24, .28, 5, 7);
+  for (let x = 1; x <= length; x += 3.4) for (const z of [-1, 1]) {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(Math.min(x, length - .3), -.8, z * (PIER_WIDTH / 2 - .1));
+    post.castShadow = true;
+    g.add(post);
+  }
+  // Bollards to tie up to, and a lantern at the end so the pier reads from far off.
+  const iron = pbr('worn_iron', { color: '#6f747c' });
+  for (let x = 4; x < length; x += 7) for (const z of [-1, 1]) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(.22, .28, .6, 8), iron);
+    b.position.set(x, 1.9, z * (PIER_WIDTH / 2 - .35));
+    g.add(b);
+  }
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(.09, .12, 3.2, 6), postMat);
+  pole.position.set(length - .4, 3.2, PIER_WIDTH / 2 - .3);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(.3, 10, 8), new THREE.MeshStandardMaterial({ color: '#ffd27a', emissive: '#ffb300', emissiveIntensity: 1.6 }));
+  lamp.position.set(length - .4, 4.9, PIER_WIDTH / 2 - .3);
+  g.add(pole, lamp);
+  return g;
+}
+
+// The berth: a ship-shaped outline on the water showing exactly where to stop. Bow to -Z, like the ships.
+export function buildBerth(length, width) {
+  const L = length / 2, W = width;
+  const s = new THREE.Shape();
+  s.moveTo(0, L);
+  s.quadraticCurveTo(W * .55, L * .55, W / 2, L * .1);
+  s.lineTo(W / 2, -L * .8);
+  s.quadraticCurveTo(W / 2, -L, W * .3, -L);
+  s.lineTo(-W * .3, -L);
+  s.quadraticCurveTo(-W / 2, -L, -W / 2, -L * .8);
+  s.lineTo(-W / 2, L * .1);
+  s.quadraticCurveTo(-W * .55, L * .55, 0, L);
+  const g = new THREE.Group();
+  const fillMat = new THREE.MeshBasicMaterial({ color: '#ffd24a', transparent: true, opacity: .18, depthWrite: false, side: THREE.DoubleSide });
+  const fill = new THREE.Mesh(new THREE.ShapeGeometry(s, 12).rotateX(-Math.PI / 2), fillMat);
+  const lineMat = new THREE.LineBasicMaterial({ color: '#ffd24a', transparent: true, opacity: .95 });
+  const pts = s.getPoints(12).map(p => new THREE.Vector3(p.x, 0, -p.y));
+  const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), lineMat);
+  // Bow arrow so it is clear which end is which; either way round is fine for mooring.
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(.6, 1.6, 3).rotateX(-Math.PI / 2), fillMat.clone());
+  arrow.position.set(0, .05, -L * .45);
+  arrow.material.opacity = .5;
+  g.add(fill, line, arrow);
+  g.userData.setColor = c => { fillMat.color.set(c); lineMat.color.set(c); arrow.material.color.set(c); };
+  return g;
 }
 
 // Goal marker: a soft beam of light from the sky and a spinning arrow pointing down at the target.

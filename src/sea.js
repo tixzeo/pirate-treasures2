@@ -19,6 +19,8 @@ export function waveHeight(x, z, t) {
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
 export const MAX_ISLES = 8, TRAIL = 28;
 
+const CHOP = 1.8; // how far crests lean together (Gerstner); 0 gives plain sines
+
 const vertex = /* glsl */`
   uniform float uTime;
   uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
@@ -28,20 +30,58 @@ const vertex = /* glsl */`
   varying float vHeight;
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
-    float h = 0.0; float dx = 0.0; float dz = 0.0;
+    vec2 base = w.xz;
+    float h = 0.0;
+    vec3 n = vec3(0.0, 1.0, 0.0);
     for (int i = 0; i < 4; i++) {
-      float ph = dot(w.xz, uSwell[i].xy) * uSwell[i].z + uTime * uSwell[i].w;
-      h += uAmp[i] * sin(ph);
-      float c = uAmp[i] * uSwell[i].z * cos(ph);
-      dx += c * uSwell[i].x; dz += c * uSwell[i].y;
+      vec2 d = uSwell[i].xy;
+      float k = uSwell[i].z, a = uAmp[i];
+      float ph = dot(base, d) * k + uTime * uSwell[i].w;
+      float s = sin(ph), c = cos(ph);
+      h += a * s;
+      // Gerstner: points slide toward the crest, so crests sharpen and troughs widen.
+      w.xz += ${CHOP.toFixed(2)} * a * d * c;
+      n.xz -= d * k * a * c;
+      n.y -= ${CHOP.toFixed(2)} * k * a * s;
     }
     w.y += h;
     vWorld = w.xyz;
     vHeight = h;
-    vNormal = normalize(vec3(-dx, 1.0, -dz));
+    vNormal = normalize(n);
     gl_Position = projectionMatrix * viewMatrix * w;
   }
 `;
+
+// A tiling field of small ripples, made once: integer wave numbers make it repeat seamlessly.
+function rippleNormals(size = 256) {
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const waves = [];
+  for (let i = 0; i < 28; i++) {
+    const kx = Math.round((rnd() - .5) * 24), ky = Math.round((rnd() - .5) * 24);
+    if (!kx && !ky) continue;
+    const len = Math.hypot(kx, ky);
+    waves.push({ kx, ky, a: 1 / len ** 1.3, ph: rnd() * Math.PI * 2 });
+  }
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let dx = 0, dy = 0;
+    for (const w of waves) {
+      const c = Math.cos((w.kx * x + w.ky * y) / size * Math.PI * 2 + w.ph) * w.a;
+      dx += c * w.kx; dy += c * w.ky;
+    }
+    const n = [-dx * .045, -dy * .045, 1], l = Math.hypot(...n), o = (y * size + x) * 4;
+    data[o] = (n[0] / l * .5 + .5) * 255; data[o + 1] = (n[1] / l * .5 + .5) * 255; data[o + 2] = (n[2] / l * .5 + .5) * 255; data[o + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, size, size);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 4;
+  t.needsUpdate = true;
+  return t;
+}
 
 const fragment = /* glsl */`
   uniform float uTime;
@@ -52,6 +92,8 @@ const fragment = /* glsl */`
   uniform vec3 uLagoon;
   uniform vec3 uSky;
   uniform vec3 uHorizon;
+  uniform vec3 uGlow;
+  uniform sampler2D uRipples;
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
@@ -69,12 +111,13 @@ const fragment = /* glsl */`
   }
 
   void main() {
-    // Small ripples on top of the swell so the sun breaks into sparkles.
+    // Two layers of ripples drifting across each other so the sun breaks into sparkles; they calm down with distance.
     vec2 p = vWorld.xz;
-    vec3 n = vNormal;
-    n.x += (noise(p * 0.9 + uTime * 0.6) - 0.5) * 0.22 + (noise(p * 2.3 - uTime * 0.9) - 0.5) * 0.12;
-    n.z += (noise(p * 0.8 - uTime * 0.5 + 7.0) - 0.5) * 0.22 + (noise(p * 2.1 + uTime * 0.8 + 3.0) - 0.5) * 0.12;
-    n = normalize(n);
+    float dist = length(cameraPosition - vWorld);
+    vec3 r1 = texture2D(uRipples, p * 0.045 + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
+    vec3 r2 = texture2D(uRipples, p * 0.083 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
+    float ripple = 0.85 * (1.0 - smoothstep(40.0, 230.0, dist)) + 0.12;
+    vec3 n = normalize(vNormal + vec3(r1.x + r2.x * 0.7, 0.0, r1.y + r2.y * 0.7) * ripple);
 
     vec3 view = normalize(cameraPosition - vWorld);
     float fres = pow(1.0 - max(dot(n, view), 0.0), 4.0);
@@ -90,6 +133,11 @@ const fragment = /* glsl */`
     }
 
     vec3 body = mix(uDeep, uShallow, clamp(vHeight * 0.6 + 0.45, 0.0, 1.0));
+    // Sunlight shining through the thin tops of the waves, strongest when you look toward the sun.
+    vec2 sunH = normalize(uSunDir.xz), lookH = normalize(-view.xz + 1e-4);
+    float back = pow(clamp(dot(lookH, sunH), 0.0, 1.0), 3.0);
+    float glow = smoothstep(0.05, 0.95, vHeight) * (0.3 + 0.7 * back) * clamp(1.0 - n.y + 0.35, 0.0, 1.0);
+    body = mix(body, uGlow, clamp(glow, 0.0, 1.0) * 0.55);
     body = mix(body, uLagoon, lagoon * 0.85);
     vec3 refl = mix(uHorizon, uSky, clamp(reflect(-view, n).y * 2.0, 0.0, 1.0));
     vec3 col = mix(body, refl, fres * 0.5);
@@ -113,7 +161,6 @@ const fragment = /* glsl */`
     float foam = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7, 0.0, 1.0) * smoothstep(0.25, 0.6, foamTex + 0.2);
     col = mix(col, vec3(0.95, 0.98, 1.0), foam);
 
-    float dist = length(cameraPosition - vWorld);
     col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
     gl_FragColor = vec4(col, 1.0);
     #include <tonemapping_fragment>
@@ -135,6 +182,8 @@ export class Sea {
       uDeep: { value: new THREE.Color('#06374f') },
       uShallow: { value: new THREE.Color('#1d7f99') },
       uLagoon: { value: new THREE.Color('#3fd0c9') },
+      uGlow: { value: new THREE.Color('#2fc4b2') },
+      uRipples: { value: rippleNormals() },
       uSky: { value: new THREE.Color('#6fa8d6') },
       uHorizon: { value: new THREE.Color('#cfe6ef') },
       uFogColor: { value: fog.color },
