@@ -47,10 +47,20 @@ export class UI {
       }
       const x = Math.max(-1, Math.min(1, -m.ang / (Math.PI / 2)));
       el.style.left = `${50 + x * 46}%`;
-      el.classList.toggle('goal', !!m.goal);
+      el.classList.toggle('next', !!m.goal);
       el.innerHTML = `${m.icon} <span>${m.label}</span><small>${m.dist} м</small>`;
     }
     for (const [k, el] of this.marks) if (!seen.has(k)) { el.remove(); this.marks.delete(k); }
+    // A mark that runs into the next-island mark keeps only its icon.
+    const next = [...this.marks.values()].find(el => el.classList.contains('next'));
+    const nr = next && next.getBoundingClientRect();
+    for (const el of this.marks.values()) {
+      if (el === next) continue;
+      el.classList.remove('quiet');
+      if (!nr) continue;
+      const r = el.getBoundingClientRect();
+      el.classList.toggle('quiet', r.right > nr.left - 6 && r.left < nr.right + 6);
+    }
   }
 
   battleHud(me, foe) {
