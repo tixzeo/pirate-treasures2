@@ -103,6 +103,8 @@ export class World {
   layBerth(isl) {
     const b = isl.userData.pier, u = this.player.mesh.userData;
     b.berth = b.root.clone().addScaledVector(b.dir, PIER * .6).addScaledVector(b.side, PIER_WIDTH / 2 + u.width / 2 + .6);
+    // The island keeps ships off its beach, but never so far out that the berth itself is blocked.
+    isl.userData.block = Math.min(isl.userData.shore + 3, b.berth.distanceTo(isl.position) - u.width);
     if (b.ghost) this.scene.remove(b.ghost);
     b.ghost = buildBerth(u.length, u.width);
     b.ghost.position.copy(b.berth);
@@ -115,9 +117,11 @@ export class World {
     dressShip(this.boss.mesh, 'scar_karakatitsa');
     for (const isl of this.isles) {
       const { def, pier } = isl.userData;
-      dressIsland(isl, def.kit, pier.dir);
+      // Our pier starts a few metres up the sand from where the model's beach meets the sea.
+      const coast = dressIsland(isl, def.kit, pier.dir);
+      if (coast) pier.root.copy(isl.position).addScaledVector(pier.dir, coast - 4);
       const kitPier = buildKitPier(def.dock);
-      kitPier.position.copy(pier.mesh.position);
+      kitPier.position.copy(pier.root);
       kitPier.rotation.copy(pier.mesh.rotation);
       this.scene.remove(pier.mesh);
       this.scene.add(kitPier);
@@ -355,7 +359,7 @@ export class World {
     for (const isl of this.scene.children.filter(o => o.userData.radius)) {
       for (const v of [p, this.boss]) {
         const d = v.pos.clone().sub(isl.position); d.y = 0;
-        const min = isl.userData.radius + 3;
+        const min = isl.userData.block || isl.userData.shore + 3;
         if (d.length() < min) { v.pos.addScaledVector(d.normalize(), min - d.length()); v.speed *= .5; }
       }
     }

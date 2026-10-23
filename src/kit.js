@@ -71,7 +71,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     if (kind) o.material = withDetail(o.material, kind);
   });
   // Static parts welded per material; what the game looks up by name or animates stays separate.
-  if (!water && !/^(token|tile)_/.test(f)) mergeStatic(g.scene, KEEP);
+  if (!water && !/^(token|tile|island)_/.test(f)) mergeStatic(g.scene, KEEP); // islands weld once they are reshaped
   kit[f] = g.scene;
 }).catch(e => {
   // Sea life is decoration: the game goes on without any piece of it.

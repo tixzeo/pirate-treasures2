@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // (`keep`) stay as they are, along with everything under them.
 
 // Plain float copy in the root's space: the kit's attributes are quantized and laid out per node.
-function flatten(mesh, toRoot) {
+export function flatten(mesh, toRoot) {
   const src = mesh.geometry, g = new THREE.BufferGeometry();
   for (const [name, a] of Object.entries(src.attributes)) {
     const n = a.count, k = a.itemSize, out = new Float32Array(n * k);

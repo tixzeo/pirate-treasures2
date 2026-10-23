@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { pbr } from './materials.js';
-import { part, boundsOf } from './kit.js';
+import { part, hasKit } from './kit.js';
+import { flatten, mergeStatic } from './merge.js';
+import { ISLE_SCALE } from './islands.js';
 
 const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .95, flatShading: true, ...extra });
 
@@ -94,26 +96,112 @@ export const DOCK_SCALE = 2.4, DOCK_PITCH = 4 * DOCK_SCALE;
 export const PIER_WIDTH = 2 * DOCK_SCALE, PIER_LENGTH = 3 * DOCK_PITCH;
 
 // Артем's island model in place of the built-in one, sized so its beach meets the water at the island's shore.
+// The ground stretches to fit (hills rise by only the square root of ISLE_SCALE); palms, rocks and the lighthouse
+// keep the size they had on the small islands and sit where they stood, and more of Артем's palms, rocks, barrels and
+// wreckage are scattered over the extra ground.
 // dir: which way our pier leaves the island; the model is turned so its own dock spot faces that way and its dock is hidden.
-// Without dir (scenery) it just takes a turn from the seed.
+// Without dir (scenery) it just takes a turn from the seed. Returns how far from the centre the beach ends along the dock's line.
+const PROP = /^(PalmTree_\d+|RockCluster_\d+|Old_Lighthouse)/;
 export function dressIsland(isl, name, dir, seed = 1) {
-  const model = part(name);
-  const beach = boundsOf(model, n => /_Beach$/.test(n));
-  const dock = boundsOf(model, n => /_Dock_/.test(n));
-  model.traverse(o => { if (/_Dock_/.test(o.name)) o.visible = false; });
+  const src = part(name);
+  src.updateMatrixWorld(true);
+  const inv = src.matrixWorld.clone().invert();
+  // Every part baked into the model's own space, sorted into ground, props (by the node they belong to) and dock.
+  const ground = [], props = new Map(), dock = new THREE.Box3();
+  src.traverse(o => {
+    if (!o.isMesh) return;
+    const geo = flatten(o, inv);
+    let key = null;
+    for (let p = o; p && p !== src && !key; p = p.parent) key = PROP.exec(p.name)?.[1];
+    if (/_Dock_/.test(o.name)) { geo.computeBoundingBox(); dock.union(geo.boundingBox); return; }
+    const m = new THREE.Mesh(geo, o.material);
+    m.name = o.name;
+    if (key) { if (!props.has(key)) props.set(key, []); props.get(key).push(m); } else ground.push(m);
+  });
+  const beach = new THREE.Box3();
+  for (const m of ground) if (/_Beach$/.test(m.name)) { m.geometry.computeBoundingBox(); beach.union(m.geometry.boundingBox); }
   const c = beach.getCenter(new THREE.Vector3()), size = beach.getSize(new THREE.Vector3());
-  const s = isl.userData.shore / (Math.max(size.x, size.z) / 2);
-  model.scale.setScalar(s);
-  model.position.set(-c.x * s, .35, -c.z * s);
+  const s = isl.userData.shore / (Math.max(size.x, size.z) / 2), sy = s / Math.sqrt(ISLE_SCALE), sp = s / ISLE_SCALE;
+  const model = new THREE.Group();
+  for (const m of ground) { m.geometry.translate(-c.x, 0, -c.z).scale(s, sy, s); model.add(m); }
+  // A prop stands on the lowest points of its geometry; that foot moves with the ground, the rest keeps its size.
+  const foot = list => {
+    const box = new THREE.Box3();
+    for (const m of list) { m.geometry.computeBoundingBox(); box.union(m.geometry.boundingBox); }
+    const f = new THREE.Vector3(), v = new THREE.Vector3();
+    let n = 0;
+    for (const m of list) {
+      const pos = m.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) if (v.fromBufferAttribute(pos, i).y < box.min.y + .15) { f.add(v); n++; }
+    }
+    return f.divideScalar(n);
+  };
+  const taken = [];
+  for (const list of props.values()) {
+    const f = foot(list), at = new THREE.Vector3((f.x - c.x) * s, f.y * sy, (f.z - c.z) * s);
+    for (const m of list) { m.geometry.translate(-f.x, -f.y, -f.z).scale(sp, sp, sp); m.position.copy(at); model.add(m); }
+    taken.push(at);
+  }
+
+  // Scatter on the new ground: drop a ray from above and keep the spot if it lands on the right kind of ground,
+  // away from the dock and from what already stands there.
+  const rand = rng(seed * 7 + 3), ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
+  const land = ground.filter(m => !/Underwater/.test(m.name));
+  model.updateMatrixWorld(true);
+  const shore = isl.userData.shore;
+  const dockAt = dock.isEmpty() ? null : dock.getCenter(new THREE.Vector3()).sub(c).multiplyScalar(s).setY(0);
+  const dockAng = dockAt && Math.atan2(dockAt.z, dockAt.x);
+  const spot = (test, gap, rMin = .1, rMax = 1) => {
+    for (let k = 0; k < 40; k++) {
+      const a = rand() * Math.PI * 2, r = shore * (rMin + rand() * (rMax - rMin));
+      if (dockAt && Math.abs(Math.atan2(Math.sin(a - dockAng), Math.cos(a - dockAng))) < .35) continue;
+      ray.set(new THREE.Vector3(Math.cos(a) * r, 500, Math.sin(a) * r), down);
+      const hit = ray.intersectObjects(land, false)[0];
+      if (!hit || hit.point.y < .2 || !test.test(hit.object.name)) continue;
+      if (taken.some(t => t.distanceTo(hit.point) < gap)) continue;
+      taken.push(hit.point.clone());
+      return hit.point;
+    }
+    return null;
+  };
+  const place = (kind, at, k) => {
+    if (!at || !hasKit(kind)) return;
+    const m = part(kind);
+    m.scale.setScalar(k);
+    m.rotation.y = rand() * Math.PI * 2;
+    m.position.copy(at).y -= /palm|rock/.test(kind) ? .1 * k : 0;
+    model.add(m);
+  };
+  const area = ISLE_SCALE * ISLE_SCALE, palms = [...props.keys()].filter(k => /Palm/.test(k)).length;
+  for (let i = 0; i < Math.round(palms * (area - 1) * .35); i++) place('palm_tree', spot(/Meadow|Hilltop|Beach/, 7), sp * (1.05 + rand() * .35));
+  for (let i = 0; i < Math.round(4 * area); i++) place('rock_cluster', spot(/Beach|Rock_Slope|Meadow_Outer|Summit/, 5), sp * (.7 + rand() * 1.1));
+  // Where the sand meets the sea along the dock's line: our pier starts a few metres up the beach from there.
+  const groundAt = (x, z) => { ray.set(new THREE.Vector3(x, 500, z), down); const h = ray.intersectObjects(land, false)[0]; return h ? h.point : null; };
+  let coast = 0;
+  if (dockAt) for (let r = shore * .3; r < shore * 1.5; r += .5) {
+    const g = groundAt(Math.cos(dockAng) * r, Math.sin(dockAng) * r);
+    if (!g || g.y < -.2) { coast = r; break; }
+  }
+  // Cargo stacked on the sand either side of the pier's foot.
+  if (coast && dir) for (let i = 0; i < 5; i++) {
+    const along = coast - 5 - rand() * 6, across = (i % 2 ? 1 : -1) * (5 + rand() * 4);
+    const g = groundAt(Math.cos(dockAng) * along - Math.sin(dockAng) * across, Math.sin(dockAng) * along + Math.cos(dockAng) * across);
+    if (g && g.y > .2) place(i % 3 ? 'barrel_intact' : 'barrel_damaged', g, 1.3);
+  }
+  // Each kind of cargo and wreckage is half a dozen more draw calls, so only the islands you land on get them.
+  if (dir) for (const kind of ['floating_plank_cluster', 'broken_mast_section', 'wrecked_hull_chunk'])
+    place(kind, spot(/Beach/, 6, .75, 1.05), 1.8);
+  mergeStatic(model, /(?!)/);
+
+  model.position.y = .35;
   const wrap = new THREE.Group();
   wrap.add(model);
-  if (dir && !dock.isEmpty()) {
-    const d = dock.getCenter(new THREE.Vector3()).sub(c);
-    wrap.rotation.y = Math.atan2(-dir.z, dir.x) - Math.atan2(-d.z, d.x);
-  } else wrap.rotation.y = seed * 2.39;
+  if (dir && dockAt) wrap.rotation.y = Math.atan2(-dir.z, dir.x) - Math.atan2(-dockAt.z, dockAt.x);
+  else wrap.rotation.y = seed * 2.39;
   for (const ch of isl.children) ch.visible = false;
   isl.add(wrap);
   isl.userData.model = wrap;
+  return coast || null;
 }
 
 // A pier of Артем's dock segments laid end to end along +X.
