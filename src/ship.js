@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { waveHeight } from './sea.js';
+import { pbr } from './materials.js';
 
-// Low-poly sailing ship built from code, so colours can be changed like the skins in part one.
-// The bow points to -Z in the ship's own space.
-export function buildShip({ hull = '#7a4a28', trim = '#f2c14e', sail = '#f4ead6', flag = '#1b1b1b', masts = 2, length = 14 } = {}) {
+// Sailing ship built from code and dressed in the texture pack, so hulls and sails can be swapped like the skins in part one.
+// hull/sail/flag name a material from the pack; the *Tint colours shade it. The bow points to -Z in the ship's own space.
+export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 'pirate_gold', sail = 'sail_canvas', sailTint = '#ffffff',
+  flag = 'black_sailcloth', masts = 2, length = 14 } = {}) {
   const g = new THREE.Group();
-  const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: .8, flatShading: true });
+  const wood = pbr('polished_oak', { repeat: [1, 3], color: '#b98d6a' });
   const W = length * .32, H = length * .18;
 
   // Hull: a pointed outline from above, extruded upward and narrowed toward the keel.
@@ -29,19 +31,27 @@ export function buildShip({ hull = '#7a4a28', trim = '#f2c14e', sail = '#f4ead6'
     p.setZ(i, p.getZ(i) * (1 - .12 * k));
   }
   geo.computeVertexNormals();
-  const hullMesh = new THREE.Mesh(geo, mat(hull));
+  const hullMat = pbr(hull, { repeat: .25, color: hullTint });
+  const hullMesh = new THREE.Mesh(geo, hullMat);
   hullMesh.castShadow = true;
   g.add(hullMesh);
 
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(W * .9, .2, length * .82), mat('#b98a55'));
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(W * .9, .2, length * .82), pbr('deck_oak', { repeat: [1, 3] }));
+  deck.receiveShadow = true;
   deck.position.set(0, H * .5, length * .05);
   g.add(deck);
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(W * 1.02, .25, length * .78), mat(trim));
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(W * 1.02, .25, length * .78), pbr(trim, { repeat: [1, 4] }));
   rail.position.set(0, H * .58, length * .06);
   rail.scale.set(1, 1, 1);
   g.add(rail);
   // Stern castle.
-  const castle = new THREE.Mesh(new THREE.BoxGeometry(W * .88, H * .55, length * .2), mat(hull));
+  const castle = new THREE.Mesh(new THREE.BoxGeometry(W * .88, H * .55, length * .2), hullMat);
+  // Dark band along each side where the gun ports sit.
+  for (const side of [-1, 1]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(.06, H * .28, length * .7), pbr('dark_leather', { repeat: [1, 3], color: '#6b4a3a' }));
+    band.position.set(side * W * .49, H * .38, length * .03);
+    g.add(band);
+  }
   castle.position.set(0, H * .78, L * .78);
   castle.castShadow = true;
   g.add(castle);
@@ -52,7 +62,7 @@ export function buildShip({ hull = '#7a4a28', trim = '#f2c14e', sail = '#f4ead6'
   // Cannons along both sides; their muzzles are where broadsides start.
   g.userData.muzzles = { left: [], right: [] };
   const cannonGeo = new THREE.CylinderGeometry(.16, .2, 1, 8).rotateZ(Math.PI / 2);
-  const cannonMat = mat('#2b2d33');
+  const cannonMat = pbr('worn_iron', { color: '#8a8f98' });
   for (let i = 0; i < 4; i++) {
     const z = -L * .35 + i * (L * 1.1 / 3);
     for (const side of [-1, 1]) {
@@ -72,7 +82,7 @@ export function buildShip({ hull = '#7a4a28', trim = '#f2c14e', sail = '#f4ead6'
   for (let i = 0; i < masts; i++) {
     const z = masts === 1 ? -L * .15 : -L * .45 + i * (L * 1.0 / (masts - 1));
     const h = mastH * (i === masts - 1 && masts > 1 ? .85 : 1);
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(.14, .22, h, 6), mat('#5e3a1f'));
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(.14, .22, h, 8), wood);
     mast.position.set(0, H * .5 + h / 2, z);
     mast.castShadow = true;
     g.add(mast);
@@ -85,17 +95,17 @@ export function buildShip({ hull = '#7a4a28', trim = '#f2c14e', sail = '#f4ead6'
         sp.setZ(j, -(1 - u * u) * (1 - .4 * v * v) * sw * .14);
       }
       sg.computeVertexNormals();
-      const sm = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: sail, roughness: .9, side: THREE.DoubleSide, flatShading: true }));
+      const sm = new THREE.Mesh(sg, pbr(sail, { repeat: [1.5, 1], color: sailTint, side: THREE.DoubleSide }));
       sm.position.set(0, H * .5 + h * y, z - .3);
       sm.castShadow = true;
       g.add(sm);
       g.userData.sails.push(sm);
-      const yard = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, sw * 1.05, 5).rotateZ(Math.PI / 2), mat('#5e3a1f'));
+      const yard = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, sw * 1.05, 6).rotateZ(Math.PI / 2), wood);
       yard.position.set(0, H * .5 + h * y + sh / 2, z - .15);
       g.add(yard);
     }
     if (i === 0) {
-      const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1, 4, 1), new THREE.MeshStandardMaterial({ color: flag, side: THREE.DoubleSide }));
+      const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1, 4, 1), pbr(flag, { side: THREE.DoubleSide }));
       fl.geometry.translate(.8, 0, 0);
       fl.rotation.y = Math.PI / 2;
       fl.position.set(0, H * .5 + h + .3, z);
@@ -104,10 +114,26 @@ export function buildShip({ hull = '#7a4a28', trim = '#f2c14e', sail = '#f4ead6'
     }
   }
   // Bowsprit.
-  const bs = new THREE.Mesh(new THREE.CylinderGeometry(.1, .14, length * .3, 5), mat('#5e3a1f'));
+  const bs = new THREE.Mesh(new THREE.CylinderGeometry(.1, .14, length * .3, 6), wood);
   bs.rotation.x = Math.PI / 2 - .35;
   bs.position.set(0, H * .75, -L - length * .1);
   g.add(bs);
+
+  // Rigging: stays from the mast tops to the bow and stern.
+  const rope = pbr('hemp_rope', { repeat: [1, 8], color: '#c9a77a' });
+  const line = (a, b) => {
+    const d = b.clone().sub(a), m = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, d.length(), 4), rope);
+    m.position.copy(a).addScaledVector(d, .5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    g.add(m);
+  };
+  const tops = g.children.filter(o => o.geometry && o.geometry.type === 'CylinderGeometry' && o.material === wood && o.geometry.parameters.height > length * .6)
+    .map(o => new THREE.Vector3(0, o.position.y + o.geometry.parameters.height / 2 - .2, o.position.z));
+  if (tops.length) {
+    line(tops[0], new THREE.Vector3(0, H * .9, -L - length * .22));
+    line(tops[tops.length - 1], new THREE.Vector3(0, H * 1.1, L * .95));
+    for (const t of tops) for (const sd of [-1, 1]) line(t, new THREE.Vector3(sd * W * .5, H * .6, t.z + 1));
+  }
 
   g.userData.length = length;
   g.userData.width = W;
@@ -151,9 +177,13 @@ export class Vessel {
     const x = this.pos.x, z = this.pos.z;
     const hb = waveHeight(x + f.x * len, z + f.z * len, t), hs = waveHeight(x - f.x * len, z - f.z * len, t);
     const hr = waveHeight(x + r.x * wid, z + r.z * wid, t), hl = waveHeight(x - r.x * wid, z - r.z * wid, t);
-    const sink = this.sinking;
-    this.pos.y = (hb + hs + hr + hl) / 4 - .3 - sink * 6;
-    this.mesh.rotation.set(Math.atan2(hb - hs, len * 2) + sink * .5, this.heading, Math.atan2(hr - hl, wid * 2) * .8 + this.heel + sink * .3, 'YXZ');
+    // Sinking goes in stages: the hull settles and lists, then the bow lifts and the stern drags her under.
+    const s = this.sinking, ss = THREE.MathUtils.smoothstep;
+    const settle = ss(s, 0, .3) * 2.2, plunge = ss(s, .35, 1) ** 1.6 * 26;
+    const list = ss(s, 0, .4) * .5, lift = ss(s, .3, .8) * .95;
+    const calm = 1 - ss(s, 0, .5);
+    this.pos.y = ((hb + hs + hr + hl) / 4 - .3) * calm - settle - plunge;
+    this.mesh.rotation.set(Math.atan2(hb - hs, len * 2) * calm + lift, this.heading, (Math.atan2(hr - hl, wid * 2) * .8 + this.heel) * calm + list, 'YXZ');
 
     for (const s of this.mesh.userData.sails) s.scale.z = .8 + .2 * Math.abs(this.throttle) + .05 * Math.sin(t * 3 + s.id);
     const fl = this.mesh.userData.flag;

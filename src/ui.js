@@ -14,7 +14,18 @@ export class UI {
     $('matchHud').hidden = m !== 'match';
   }
 
-  sailHud({ speed, reload, reloadMax, canDock, battle, marks }) {
+  sailHud({ speed, reload, reloadMax, canDock, battle, marks, goal }) {
+    // The next place to sail to, with an arrow that turns as the ship turns.
+    $('goal').hidden = !goal || battle;
+    if (goal) {
+      $('goal').classList.toggle('foe', goal.kind === 'boss');
+      $('goalKind').textContent = goal.kind === 'boss' ? 'Бой с' : 'Плыть к';
+      const ic = `./textures/icons/icon_${goal.kind === 'boss' ? 'skull' : 'treasure_chest'}.png`;
+      if (!$('goalIcon').src.endsWith(ic.slice(1))) $('goalIcon').src = ic;
+      $('goalName').textContent = goal.name;
+      $('goalDist').textContent = `${goal.dist} м`;
+      $('goalArrow').style.transform = `rotate(${-goal.ang}rad)`;
+    }
     $('speed').textContent = `${Math.round(speed * 1.94)} узлов`;
     $('dock').hidden = !canDock;
     for (const [side, id] of [['left', 'fireL'], ['right', 'fireR']]) {
@@ -30,13 +41,14 @@ export class UI {
       let el = this.marks.get(m.label);
       if (!el) {
         el = document.createElement('div');
-        el.className = 'mark ' + (m.icon === '☠' ? 'foe' : 'isle');
+        el.className = 'mark ' + (m.foe ? 'foe' : 'isle');
         this.compass.appendChild(el);
         this.marks.set(m.label, el);
       }
       const x = Math.max(-1, Math.min(1, -m.ang / (Math.PI / 2)));
       el.style.left = `${50 + x * 46}%`;
-      el.innerHTML = `${m.icon} ${m.label}<small>${m.dist} м</small>`;
+      el.classList.toggle('goal', !!m.goal);
+      el.innerHTML = `${m.icon} <span>${m.label}</span><small>${m.dist} м</small>`;
     }
     for (const [k, el] of this.marks) if (!seen.has(k)) { el.remove(); this.marks.delete(k); }
   }
@@ -48,13 +60,13 @@ export class UI {
     $('foeHp').style.width = (foe.hp / foe.maxHp * 100) + '%';
   }
 
-  matchHud({ name, moves, score, need, gold }) {
+  matchHud({ name, moves, score, gold, goals }) {
     $('isleName').textContent = name;
     $('mMoves').textContent = moves;
     $('mScore').textContent = score;
-    $('mNeed').textContent = ` / ${need}`;
     $('mGold').textContent = gold;
-    $('mGoal').style.width = Math.min(100, score / need * 100) + '%';
+    const box = $('mGoals');
+    box.innerHTML = goals.map(g => `<div class="mgoal${g.have >= g.need ? ' done' : ''}"><span>${g.label}</span><b>${Math.min(g.have, g.need)} / ${g.need}</b><i style="width:${Math.min(100, g.have / g.need * 100)}%"></i></div>`).join('');
   }
 
   flash(text) {
@@ -63,8 +75,9 @@ export class UI {
     f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
   }
 
-  banner(title, text, ms = 4500) {
+  banner(title, text, ms = 4500, danger = true) {
     const b = $('banner');
+    b.classList.toggle('calm', !danger);
     b.querySelector('h2').textContent = title;
     b.querySelector('p').textContent = text;
     b.hidden = false;
@@ -72,8 +85,9 @@ export class UI {
     this.bannerT = setTimeout(() => { b.hidden = true; }, ms);
   }
 
-  dialog({ title, text, gold, buttons }) {
+  dialog({ title, text, gold, buttons, icon = 'treasure_chest' }) {
     const d = $('dialog');
+    d.querySelector('.dicon').src = `./textures/icons/icon_${icon}.png`;
     d.querySelector('h2').textContent = title;
     d.querySelector('p').textContent = text;
     d.querySelector('.haul').textContent = gold ? `+${gold} золота` : '';

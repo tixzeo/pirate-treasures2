@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { Sea, addSky, waveHeight } from './sea.js';
+import { Sea, addSky, addClouds, waveHeight } from './sea.js';
 import { buildShip, Vessel } from './ship.js';
-import { buildIsland, buildBeacon } from './island.js';
+import { buildIsland, buildBeacon, buildMarker } from './island.js';
+import { ISLANDS, BOSS_HOME, SCENERY } from './islands.js';
 import { Effects } from './fx.js';
 import { sfx } from './sound.js';
 
@@ -9,40 +10,50 @@ const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
 const G = 9.8;
 
-// The open sea: the player's ship, the treasure island and the boss that patrols nearby.
+// The open sea: the player's ship, the treasure islands in order, and the boss that patrols nearby.
 export class World {
   constructor(renderer, ui) {
     this.renderer = renderer;
     this.ui = ui;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, 1, .5, 5000);
-    addSky(this.scene, renderer);
-    this.light = this.scene.children.find(o => o.isDirectionalLight);
-    this.sea = new Sea(this.scene);
+    const { light, sun } = addSky(this.scene, renderer);
+    this.light = light;
+    this.sea = new Sea(this.scene, sun);
+    addClouds(this.scene);
     this.fx = new Effects(this.scene);
 
     // Player: the brigantine from part one's shipyard.
-    this.player = new Vessel(buildShip({ hull: '#5e3a1f', trim: '#f2c14e', sail: '#f4ead6', flag: '#1b1b1b', masts: 2, length: 14 }), { hp: 100 });
+    this.player = new Vessel(buildShip({ hull: 'polished_oak', trim: 'pirate_gold', sail: 'sail_canvas', flag: 'black_sailcloth', masts: 2, length: 14 }), { hp: 100 });
     this.scene.add(this.player.mesh);
     this.reload = { left: 0, right: 0 };
 
-    this.island = buildIsland({ radius: 20, seed: 7 });
-    this.island.position.set(30, 0, -190);
-    this.scene.add(this.island);
-    this.beacon = buildBeacon(this.island.userData.radius + 9);
-    this.beacon.position.copy(this.island.position).setY(.6);
-    this.scene.add(this.beacon);
-    this.islandDone = false;
-    // A couple of empty islands so the sea is not bare.
-    for (const [x, z, r, s] of [[-140, -120, 12, 3], [190, -260, 16, 11], [-90, 140, 9, 5], [120, 120, 11, 13]]) {
-      const isl = buildIsland({ radius: r, seed: s, chest: false, palms: 4 });
+    // Treasure islands, each with a ring on the water where you can land.
+    this.isles = ISLANDS.map(def => {
+      const isl = buildIsland({ radius: def.radius, seed: def.seed });
+      isl.position.set(def.x, 0, def.z);
+      isl.userData.def = def;
+      isl.userData.done = false;
+      const ring = buildBeacon(isl.userData.radius + 9);
+      ring.position.copy(isl.position).setY(.6);
+      isl.userData.ring = ring;
+      this.scene.add(isl, ring);
+      return isl;
+    });
+    const scenery = SCENERY.map(([x, z, r, seed]) => {
+      const isl = buildIsland({ radius: r, seed, chest: false, palms: 4 });
       isl.position.set(x, 0, z);
       this.scene.add(isl);
-    }
+      return isl;
+    });
+    this.sea.setIslands([...this.isles, ...scenery]);
+    // A beam of light and a golden arrow hang over whatever you should sail to next.
+    this.marker = buildMarker();
+    this.scene.add(this.marker);
 
     // Boss: «Каракатица», captain Scar's schooner from island 12.
-    this.boss = new Vessel(buildShip({ hull: '#2b2433', trim: '#8a8a8a', sail: '#4a4054', flag: '#b3322b', masts: 2, length: 15 }), { hp: 150, maxSpeed: 9, turnRate: .55 });
-    this.bossHome = new THREE.Vector3(190, 0, -40);
+    this.boss = new Vessel(buildShip({ hull: 'weathered_hull', hullTint: '#8a7f99', trim: 'worn_iron', sail: 'black_sailcloth', sailTint: '#9a8fb0', flag: 'crimson_sailcloth', masts: 2, length: 15 }), { hp: 150, maxSpeed: 9, turnRate: .55 });
+    this.bossHome = new THREE.Vector3(BOSS_HOME.x, 0, BOSS_HOME.z);
     this.boss.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     this.boss.throttle = .5;
     this.boss.reload = 2;
@@ -58,10 +69,23 @@ export class World {
 
   resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
+  // An unvisited treasure island close enough to land on, or null.
   nearIsland() {
-    if (this.islandDone) return false;
-    const d = this.player.pos.distanceTo(this.island.position);
-    return d < this.island.userData.radius + 12;
+    return this.isles.find(isl => !isl.userData.done && this.player.pos.distanceTo(isl.position) < isl.userData.radius + 12) || null;
+  }
+
+  // What to sail to next: the first unvisited island, then Scar, then nothing.
+  target() {
+    const isl = this.isles.find(i => !i.userData.done);
+    if (isl) return { kind: 'isle', name: isl.userData.def.name, pos: isl.position, isle: isl };
+    if (!this.bossBeaten) return { kind: 'boss', name: '«Каракатица»', pos: this.boss.pos };
+    return null;
+  }
+
+  // Bearing of a point relative to the bow, in radians (positive is to the left).
+  bearing(pos) {
+    const to = pos.clone().sub(this.player.pos);
+    return THREE.MathUtils.euclideanModulo(Math.atan2(-to.x, -to.z) - this.player.heading + Math.PI, Math.PI * 2) - Math.PI;
   }
 
   // Broadside from one side of a ship. Aims at `target` when it is on that side, else fires at a default range.
@@ -114,7 +138,7 @@ export class World {
   onBall(ball) {
     for (const ship of [this.player, this.boss]) {
       if (!this.hits(ball, ship)) continue;
-      const dmg = ship === this.boss ? 6 : 5;
+      const dmg = ship === this.boss ? 6 : this.immortal ? 0 : 5;
       ship.hp = Math.max(0, ship.hp - dmg);
       this.fx.burst('fire', ball.m.position, 4, .6, 3);
       this.fx.burst('debris', ball.m.position, 5, 1, 5);
@@ -184,7 +208,8 @@ export class World {
       if (this.state === 'sail' && p.pos.distanceTo(this.boss.pos) < 85 && p.hp > 0) this.startBattle();
     }
     p.update(dt, t);
-    this.boss.update(dt, t);
+    if (!this.bossGone) this.boss.update(dt, t);
+    this.updateFloaters(dt, t);
     // Ships cannot sail through the islands.
     for (const isl of this.scene.children.filter(o => o.userData.radius)) {
       for (const v of [p, this.boss]) {
@@ -198,19 +223,32 @@ export class World {
       if (this.boss.hp <= 0 && !this.bossBeaten) this.winBattle();
       else if (p.hp <= 0 && !this.lost) this.loseBattle();
     }
-    if (this.boss.hp <= 0) this.boss.sinking = Math.min(1, this.boss.sinking + dt * .12);
+    if (this.boss.hp <= 0 && !this.bossGone) this.sinkBoss(dt);
     if (p.hp <= 0) p.sinking = Math.min(.35, p.sinking + dt * .15);
     // Burning ships smoke.
-    for (const v of [p, this.boss]) if (v.hp < v.maxHp * .5 && v.sinking < 1 && Math.random() < dt * (v.hp <= 0 ? 12 : 4))
+    for (const v of [p, this.boss]) if (v.hp < v.maxHp * .5 && v.sinking < .6 && Math.random() < dt * (v.hp <= 0 ? 12 : 4))
       this.fx.puff('smoke', v.pos.clone().add(new THREE.Vector3((Math.random() - .5) * 4, 3, (Math.random() - .5) * 6)), { size: 1.2 });
 
     for (let i = this.queue.length - 1; i >= 0; i--) if (this.queue[i].at <= t) this.shot(this.queue.splice(i, 1)[0]);
     this.fx.update(dt, t, b => this.onBall(b));
     this.sea.update(t, p.pos);
-    this.beacon.visible = !this.islandDone;
-    this.beacon.scale.setScalar(1 + Math.sin(t * 2) * .03);
-    this.beacon.material.opacity = .5 + Math.sin(t * 3) * .3;
-    this.beacon.position.y = waveHeight(this.beacon.position.x, this.beacon.position.z, t) * .3 + .5;
+    this.sea.addWake(dt, [p, this.boss]);
+    const goal = this.target();
+    for (const isl of this.isles) {
+      const ring = isl.userData.ring, cur = goal && goal.isle === isl;
+      ring.visible = !isl.userData.done;
+      ring.scale.setScalar(1 + Math.sin(t * 2) * .03);
+      ring.material.opacity = (cur ? .6 : .25) + Math.sin(t * 3) * (cur ? .3 : .1);
+      ring.position.y = waveHeight(ring.position.x, ring.position.z, t) * .3 + .5;
+    }
+    this.marker.visible = !!goal && this.state !== 'battle';
+    if (goal) {
+      const h = goal.kind === 'isle' ? goal.isle.userData.radius * .6 + 14 : 26;
+      this.marker.position.set(goal.pos.x, h + Math.sin(t * 2) * 1.2, goal.pos.z);
+      this.marker.userData.arrow.rotation.y = t * 1.5;
+      this.marker.userData.beam.material.opacity = .22 + Math.sin(t * 2.5) * .06;
+      this.marker.userData.setColor(goal.kind === 'boss' ? '#ff5a4a' : '#ffd24a');
+    }
 
     this.updateCamera(dt);
     this.light.position.copy(p.pos).add(new THREE.Vector3(25, 80, 60));
@@ -218,21 +256,19 @@ export class World {
 
     this.ui.sailHud({
       speed: Math.abs(p.speed), throttle: p.throttle, reload: this.reload, reloadMax: RELOAD,
-      canDock: this.state === 'sail' && this.nearIsland(), battle: this.state === 'battle',
+      canDock: this.state === 'sail' && !!this.nearIsland(), battle: this.state === 'battle',
       marks: this.marks(),
+      goal: goal && { name: goal.name, kind: goal.kind, dist: Math.round(goal.pos.distanceTo(p.pos)), ang: this.bearing(goal.pos) },
     });
   }
 
   // Compass bar markers: angle relative to the bow and distance.
   marks() {
-    const out = [];
-    const add = (pos, icon, label) => {
-      const to = pos.clone().sub(this.player.pos);
-      const ang = THREE.MathUtils.euclideanModulo(Math.atan2(-to.x, -to.z) - this.player.heading + Math.PI, Math.PI * 2) - Math.PI;
-      out.push({ ang, icon, label, dist: Math.round(to.length()) });
-    };
-    if (!this.islandDone) add(this.island.position, '✕', 'Клад');
-    if (!this.bossBeaten) add(this.boss.pos, '☠', 'Шрам');
+    const goal = this.target();
+    const out = this.isles.filter(i => !i.userData.done).map(i => ({
+      ang: this.bearing(i.position), icon: '✕', label: i.userData.def.name, dist: Math.round(i.position.distanceTo(this.player.pos)), goal: goal && goal.isle === i,
+    }));
+    if (!this.bossBeaten) out.push({ ang: this.bearing(this.boss.pos), icon: '☠', label: 'Шрам', dist: Math.round(this.boss.pos.distanceTo(this.player.pos)), goal: goal && goal.kind === 'boss', foe: true });
     return out;
   }
 
@@ -248,21 +284,70 @@ export class World {
     this.shake = Math.max(0, (this.shake || 0) - dt);
     if (this.shake) this.camera.position.add(new THREE.Vector3((Math.random() - .5), (Math.random() - .5), 0).multiplyScalar(this.shake));
     const look = p.pos.clone().addScaledVector(f, 10).add(new THREE.Vector3(0, 2, 0));
-    if (this.state === 'battle' && this.boss.hp > 0) look.lerp(this.boss.pos, .25);
+    if ((this.state === 'battle' && this.boss.hp > 0) || (this.boss.hp <= 0 && !this.bossGone)) look.lerp(this.boss.pos, .25);
     this.camera.lookAt(look);
+  }
+
+  // About twelve seconds from the last hit to the last bubble; then the wreck is gone for good.
+  sinkBoss(dt) {
+    const b = this.boss, before = b.sinking;
+    b.throttle = 0; b.rudder = 0;
+    b.speed *= 1 - dt * .8;
+    b.sinking = Math.min(1, b.sinking + dt / 12);
+    if (before === 0) {
+      this.fx.burst('debris', b.pos.clone().setY(1.5), 14, 1.2, 7);
+      this.spawnFloaters(b.pos, 9);
+    }
+    // Air and water churn where the hull goes down.
+    if (Math.random() < dt * (b.sinking < .9 ? 14 : 4)) {
+      const at = b.pos.clone().add(new THREE.Vector3((Math.random() - .5) * 8, 0, (Math.random() - .5) * 12));
+      at.y = waveHeight(at.x, at.z, this.time) + .2;
+      this.fx.puff('splash', at, { size: .5 + Math.random() * .6 });
+    }
+    if (before < .35 && b.sinking >= .35) { sfx('splash'); this.fx.burst('splash', b.pos.clone().setY(.5), 10, 1, 4); }
+    if (b.sinking >= 1) {
+      this.bossGone = true;
+      this.scene.remove(b.mesh);
+      this.fx.burst('splash', b.pos.clone().setY(.3), 6, .8, 2);
+      this.onBossGone && this.onBossGone();
+    }
+  }
+
+  // Barrels and planks left floating where a ship went down; they drift and fade after a while.
+  spawnFloaters(at, n) {
+    this.floaters = this.floaters || [];
+    const wood = new THREE.MeshStandardMaterial({ color: '#7a4a28', roughness: .9, flatShading: true, transparent: true });
+    for (let i = 0; i < n; i++) {
+      const barrel = i % 3 === 0;
+      const m = new THREE.Mesh(barrel ? new THREE.CylinderGeometry(.5, .5, 1.1, 8) : new THREE.BoxGeometry(2.4 + Math.random() * 1.5, .25, .6), wood);
+      if (barrel) m.rotation.z = Math.PI / 2;
+      m.position.set(at.x + (Math.random() - .5) * 14, 0, at.z + (Math.random() - .5) * 18);
+      m.castShadow = true;
+      this.scene.add(m);
+      this.floaters.push({ m, life: 25 + Math.random() * 8, spin: (Math.random() - .5) * .4, drift: new THREE.Vector3((Math.random() - .5) * 1.2, 0, (Math.random() - .5) * 1.2), yaw: Math.random() * 6 });
+    }
+  }
+
+  updateFloaters(dt, t) {
+    if (!this.floaters) return;
+    for (let i = this.floaters.length - 1; i >= 0; i--) {
+      const f = this.floaters[i];
+      f.life -= dt;
+      f.yaw += f.spin * dt;
+      f.m.position.addScaledVector(f.drift, dt);
+      f.m.position.y = waveHeight(f.m.position.x, f.m.position.z, t) - .05 - Math.max(0, 3 - f.life) * .4;
+      f.m.rotation.y = f.yaw;
+      if (f.life <= 0) { this.scene.remove(f.m); f.m.geometry.dispose(); this.floaters.splice(i, 1); }
+    }
   }
 
   winBattle() {
     this.bossBeaten = true;
     this.state = 'sail';
+    this.onBossBeaten && this.onBossBeaten();
     sfx('win');
     this.ui.battleHud(null);
-    setTimeout(() => this.ui.dialog({
-      title: '«Каракатица» идёт ко дну!',
-      text: 'Шрам уплывает на шлюпке, грозя кулаком. А с тонущей шхуны к вам карабкается мальчишка: «Я больше не служу Шраму! Возьмите меня юнгой, я знаю все его хитрости». Юнга Тим теперь в команде.',
-      gold: 500,
-      buttons: [['Йо-хо-хо!', () => this.ui.closeDialog()]],
-    }), 1200);
+    this.ui.banner('«Каракатица» идёт ко дну!', 'Шрам прыгает в шлюпку. Смотрите, как шхуна уходит под воду.', 5000, false);
     this.onGold && this.onGold(500);
   }
 
@@ -271,6 +356,7 @@ export class World {
     sfx('lose');
     setTimeout(() => this.ui.dialog({
       title: 'Корабль пробит',
+      icon: 'shield',
       text: 'Шрам оказался сильнее. Плотники залатают пробоины, а в следующий раз держитесь к нему бортом и не подставляйте корму.',
       buttons: [['Починиться и снова в бой', () => { this.ui.closeDialog(); this.repair(); }]],
     }), 1200);
@@ -289,6 +375,45 @@ export class World {
     this.boss.hp = this.boss.maxHp;
     this.state = 'sail';
     this.ui.battleHud(null);
+  }
+
+  // Saved progress: which islands are done and whether Scar is already at the bottom.
+  applySave(save) {
+    for (const isl of this.isles) isl.userData.done = save.done.includes(isl.userData.def.name);
+    if (save.bossBeaten && !this.bossGone) {
+      this.bossBeaten = this.bossGone = true;
+      this.boss.hp = 0;
+      this.scene.remove(this.boss.mesh);
+    }
+  }
+
+  // Back to a fresh voyage: islands open, Scar afloat, the ship at the start.
+  resetProgress() {
+    for (const isl of this.isles) isl.userData.done = false;
+    const b = this.boss;
+    b.hp = b.maxHp; b.sinking = 0; b.speed = 0;
+    b.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
+    if (this.bossGone) this.scene.add(b.mesh);
+    this.bossBeaten = this.bossGone = false;
+    this.fx.clearBalls();
+    this.queue = [];
+    const p = this.player;
+    p.hp = p.maxHp; p.sinking = 0; p.speed = 0; p.heading = 0;
+    p.pos.set(0, 0, 0);
+    this.camPos.set(0, 12, 30);
+    this.lost = false;
+    this.state = 'sail';
+    this.ui.battleHud(null);
+  }
+
+  // Put the ship next to a place, bow toward it.
+  teleport(to, dist) {
+    const p = this.player, from = to.clone().add(new THREE.Vector3(0, 0, dist));
+    from.y = 0;
+    p.pos.copy(from);
+    p.heading = 0;
+    p.speed = 0;
+    this.camPos.copy(from).add(new THREE.Vector3(0, 12, 28));
   }
 
   render() { this.renderer.render(this.scene, this.camera); }
