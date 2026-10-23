@@ -1,0 +1,97 @@
+/* Palette and fonts carried over from part one. */
+:root {
+  --sea: #0f2a3a;
+  --panel: #173a4d;
+  --wood: #8a5a34;
+  --wood-dark: #5e3a1f;
+  --parchment: #efdcb3;
+  --ink: #3a2615;
+  --gold: #f2c14e;
+  --blood: #b3322b;
+  --fg: #f4ead6;
+  --muted: #a9c2c9;
+  --good: #2e7d4f;
+  --brass: #c9a24f;
+  --font-display: "Kelly Slab", Georgia, serif;
+  --font-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sea); color: var(--fg); font-family: var(--font-body); font-weight: 600;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+h1, h2 { font-family: var(--font-display); font-weight: 400; margin: 0; }
+button { font: inherit; font-weight: 800; color: var(--ink); background: linear-gradient(#f5d77a, var(--brass)); border: 2px solid var(--ink);
+  border-radius: 12px; padding: 10px 18px; cursor: pointer; box-shadow: 0 3px 0 var(--ink); touch-action: manipulation; }
+button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+button.ghost { background: rgba(10, 29, 41, .55); color: var(--fg); border-color: rgba(244, 234, 214, .4); box-shadow: none; padding: 6px 12px; }
+.plaque { background: rgba(10, 29, 41, .65); border: 1px solid rgba(242, 193, 78, .5); border-radius: 999px; padding: 6px 14px; color: var(--gold); font-weight: 800; }
+.plaque::before { content: "● "; }
+
+#hud, #matchHud { position: fixed; inset: 0; pointer-events: none; padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom)); }
+#hud button, #matchHud button, #hud .stick { pointer-events: auto; }
+.top { display: flex; align-items: center; gap: 10px; }
+.top .compass { flex: 1; }
+
+/* Compass strip: marks for the treasure and the enemy, relative to the bow. */
+.compass { position: relative; height: 34px; border-radius: 10px; background: rgba(10, 29, 41, .55); border: 1px solid rgba(244, 234, 214, .25); overflow: hidden; }
+.compass .n { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(244, 234, 214, .5); }
+.compass .mark { position: absolute; top: 2px; translate: -50% 0; text-align: center; line-height: 1; font-size: 15px; white-space: nowrap; }
+.compass .mark small { display: block; font-size: 10px; color: var(--muted); }
+.compass .mark.foe { color: #ff7b6e; }
+.compass .mark.isle { color: var(--gold); }
+
+.bars { display: grid; gap: 6px; margin-top: 10px; max-width: 420px; margin-inline: auto; }
+.bar { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; font-size: 13px; text-shadow: 0 1px 2px #000; }
+.bar b { height: 12px; border-radius: 6px; background: rgba(0, 0, 0, .45); overflow: hidden; border: 1px solid rgba(255, 255, 255, .25); }
+.bar i { display: block; height: 100%; width: 100%; transition: width .25s; }
+.bar.me i { background: linear-gradient(90deg, #2e7d4f, #59c98a); }
+.bar.foe i { background: linear-gradient(90deg, #8a1f19, #e3394f); }
+
+.speed { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); translate: -50% 0; font-size: 13px; color: var(--muted); text-shadow: 0 1px 2px #000; }
+.stick { position: absolute; left: 22px; bottom: 40px; width: 130px; height: 130px; border-radius: 50%; background: rgba(10, 29, 41, .35); border: 2px solid rgba(244, 234, 214, .3); touch-action: none; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px; border-radius: 50%; background: rgba(242, 193, 78, .85); border: 2px solid var(--ink); }
+.guns { position: absolute; right: 18px; bottom: 44px; display: flex; gap: 10px; }
+.gun { position: relative; overflow: hidden; min-width: 104px; padding: 16px 12px; }
+.gun i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--blood); width: 0; }
+.gun.wait { filter: grayscale(.7) brightness(.8); }
+.dock { position: absolute; left: 50%; bottom: 120px; translate: -50% 0; font-size: 18px; padding: 14px 26px; animation: bob 1.2s ease-in-out infinite alternate; }
+@keyframes bob { to { translate: -50% -6px; } }
+.keys { position: absolute; right: 18px; top: 58px; margin: 0; font-size: 12px; color: var(--muted); text-shadow: 0 1px 2px #000; }
+@media (pointer: coarse) { .keys { display: none; } }
+@media (pointer: fine) { .stick { display: none; } }
+
+/* Island treasure hunt HUD. */
+#matchHud header { display: flex; align-items: center; gap: 12px; }
+#matchHud h1 { font-size: 22px; flex: 1; text-align: center; margin-right: 110px; color: var(--gold); text-shadow: 0 2px 4px #000; }
+.stats { display: flex; justify-content: center; gap: 8px; margin-top: 8px; }
+.stat { background: rgba(10, 29, 41, .7); border: 1px solid rgba(242, 193, 78, .35); border-radius: 12px; padding: 4px 14px; text-align: center; min-width: 84px; }
+.stat span { display: block; font-size: 11px; color: var(--muted); }
+.stat b { font-size: 20px; }
+.stat small { color: var(--muted); }
+.goalbar { max-width: 360px; height: 8px; margin: 8px auto 0; border-radius: 4px; background: rgba(0, 0, 0, .45); overflow: hidden; }
+.goalbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brass), var(--gold)); transition: width .3s; }
+
+.flash { position: fixed; left: 50%; top: 32%; translate: -50% -50%; font-family: var(--font-display); font-size: clamp(26px, 6vw, 46px); color: var(--gold);
+  text-shadow: 0 3px 0 var(--ink), 0 0 18px rgba(0, 0, 0, .6); pointer-events: none; opacity: 0; white-space: nowrap; }
+.flash.on { animation: pop 1s ease-out; }
+@keyframes pop { 0% { opacity: 0; scale: .6; } 15% { opacity: 1; scale: 1.1; } 70% { opacity: 1; scale: 1; } 100% { opacity: 0; scale: 1; translate: -50% -80%; } }
+
+.banner { position: fixed; left: 50%; top: 22%; translate: -50% 0; width: min(92vw, 520px); text-align: center; background: rgba(10, 29, 41, .82);
+  border: 2px solid var(--blood); border-radius: 14px; padding: 14px 18px; pointer-events: none; animation: fadein .3s; }
+.banner h2 { color: #ff7b6e; font-size: 24px; }
+.banner p { margin: 6px 0 0; color: var(--fg); font-size: 14px; }
+@keyframes fadein { from { opacity: 0; translate: -50% -10px; } }
+
+.dialog, .intro { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 15, 22, .55); padding: 16px; }
+.card { width: min(100%, 440px); background: var(--parchment); color: var(--ink); border: 3px solid var(--wood-dark); border-radius: 16px; padding: 22px; text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .5); animation: fadein2 .25s; }
+@keyframes fadein2 { from { opacity: 0; scale: .92; } }
+.card h1 { font-size: 30px; color: var(--wood-dark); }
+.card h2 { font-size: 26px; color: var(--wood-dark); }
+.card p { line-height: 1.45; }
+.card .haul:empty { display: none; }
+.card .haul { font-size: 20px; font-weight: 800; color: #8a5c0e; margin-bottom: 12px; }
+.card .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+@media (max-width: 480px) { #matchHud h1 { margin-right: 0; font-size: 20px; } }
