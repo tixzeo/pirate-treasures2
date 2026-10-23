@@ -13,14 +13,22 @@ const FILES = [
   'island_small_palm_cove', 'island_medium_lagoon', 'island_large_volcanic',
   'dock_pine', 'dock_royal', 'dock_ruined', 'palm_tree', 'rock_cluster',
   'tile_base', 'token_ruby', 'token_emerald', 'token_compass', 'token_seashell', 'token_doubloon',
+  // The Water Life Pack (public/models/water): Scar's rowboat, wreckage, buoys, a gull and fish.
+  'water/scar_rowboat', 'water/floating_plank_cluster', 'water/broken_mast_section', 'water/wrecked_hull_chunk',
+  'water/barrel_intact', 'water/barrel_damaged', 'water/buoy_red_white', 'water/buoy_lantern',
+  'water/seagull', 'water/fish_silver', 'water/fish_tropical',
 ];
 
 // The kit's materials come out fully metallic (glTF's default when the exporter leaves metalness out), which turns
 // sails and wood dark and makes gems mirror the room. Only iron and gold parts keep some metal.
 const METAL = /Cannon|Muzzle|Nail|Hoop|Band|Bollard|Lantern|Doubloon|Compass_Blue_Rim|Rim_Highlight|Pivot|Needle/;
 
+// The water pack names its materials well, so there the material name says what is metal.
+const WATER_METAL = /iron|metal|nail|chain|ring|lifting eye|cap|brass|oarlock|hoop|lamp|cage|roof/i;
+
 export const kit = {};
-export const kitReady = Promise.all(FILES.map(f => loader.loadAsync(`${base}models/kit/${f}.glb`).then(g => {
+export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}models/${path.includes('/') ? path : 'kit/' + path}.glb`).then(g => {
+  const f = path.split('/').pop(), water = path.startsWith('water/');
   const seen = new Set();
   g.scene.traverse(o => {
     if (!o.isMesh) return;
@@ -36,13 +44,23 @@ export const kitReady = Promise.all(FILES.map(f => loader.loadAsync(`${base}mode
       }
       col.needsUpdate = true;
     }
-    const metal = METAL.test(o.name) || f === 'token_doubloon';
-    o.material.metalness = metal ? .55 : 0;
-    o.material.roughness = metal ? .4 : /Ruby|Emerald/.test(o.name) ? .45 : .8;
+    if (water) {
+      if (!WATER_METAL.test(o.material.name)) o.material.metalness = 0;
+      // The buoy's lamp glows.
+      if (/light/i.test(o.material.name)) { o.material.emissive = o.material.color.clone(); o.material.emissiveIntensity = 1.6; }
+    } else {
+      const metal = METAL.test(o.name) || f === 'token_doubloon';
+      o.material.metalness = metal ? .55 : 0;
+      o.material.roughness = metal ? .4 : /Ruby|Emerald/.test(o.name) ? .45 : .8;
+    }
     o.material.envMapIntensity = .45; // the board's room reflections otherwise wash flat tops out to white
-    if (/Sail|Flag/.test(o.name)) o.material.side = THREE.DoubleSide;
+    if (/Sail|Flag|Wing|Fin|Canvas/.test(o.name)) o.material.side = THREE.DoubleSide;
   });
   kit[f] = g.scene;
+}).catch(e => {
+  // Sea life is decoration: the game goes on without any piece of it.
+  if (!path.startsWith('water/')) throw e;
+  console.warn(`${path} did not load`, e);
 }))).then(() => kit);
 kitReady.catch(e => console.warn('World kit did not load', e));
 

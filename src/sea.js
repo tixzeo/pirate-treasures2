@@ -83,6 +83,17 @@ function rippleNormals(size = 256) {
   return t;
 }
 
+// Until the foam texture loads: a soft noise pattern in the alpha channel.
+function blankFoam(size = 64) {
+  const data = new Uint8Array(size * size * 4).fill(255);
+  for (let i = 0; i < size * size; i++) data[i * 4 + 3] = 40 + ((i * 2654435761) >>> 24) % 120;
+  const t = new THREE.DataTexture(data, size, size);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
+
 const fragment = /* glsl */`
   uniform float uTime;
   uniform vec3 uSunDir;
@@ -94,6 +105,11 @@ const fragment = /* glsl */`
   uniform vec3 uHorizon;
   uniform vec3 uGlow;
   uniform sampler2D uRipples;
+  uniform float uRippleK;              // how hard the ripple map bends the light
+  uniform sampler2D uFoam;             // foam pattern in alpha
+  uniform vec3 uSand;
+  uniform vec4 uShips[2];              // x, z, heading, speed
+  uniform vec2 uShipSize[2];           // half length, half width
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
@@ -110,44 +126,90 @@ const fragment = /* glsl */`
     return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
   }
 
+  // The sky as the water mirrors it: a gradient from the haze at the horizon up to blue, soft clouds and the sun's glow.
+  vec3 skyColor(vec3 r) {
+    float y = max(r.y, 0.0);
+    vec3 col = mix(uHorizon, uSky, pow(y, 0.45));
+    vec2 cp = r.xz / (y + 0.15) * 1.4 + uTime * 0.008;
+    float cloud = smoothstep(0.55, 0.85, noise(cp) * 0.65 + noise(cp * 2.3 + 4.0) * 0.35);
+    col = mix(col, vec3(1.0), cloud * 0.5 * smoothstep(0.03, 0.3, y));
+    float sun = max(dot(r, uSunDir), 0.0);
+    return col + uSunColor * (pow(sun, 8.0) * 0.2 + pow(sun, 90.0) * 0.8);
+  }
+
+  // Foam a ship pushes aside: a band around the hull, heaviest at the bow, and the two arms of the wake behind.
+  float shipFoam(vec2 p, vec4 ship, vec2 size) {
+    if (ship.w <= 0.05) return 0.0;
+    vec2 f = vec2(-sin(ship.z), -cos(ship.z)), r = vec2(cos(ship.z), -sin(ship.z));
+    vec2 d = p - ship.xy;
+    float u = dot(d, f), v = dot(d, r);
+    float pace = clamp(ship.w / 8.0, 0.0, 1.0);
+    float e = length(vec2(u / (size.x * 1.05), v / (size.y * 1.25)));
+    float hull = (1.0 - smoothstep(1.0, 1.25 + pace * 0.35, e)) * (0.45 + 0.55 * clamp(u / size.x * 0.8 + 0.3, 0.0, 1.0));
+    float behind = -u - size.x * 0.8;
+    float arm = 0.0;
+    if (behind > 0.0) {
+      float spread = behind * 0.36 + size.y * 0.8;
+      arm = 1.0 - smoothstep(0.0, 0.9 + behind * 0.04, abs(abs(v) - spread));
+      arm *= 1.0 - smoothstep(0.0, 70.0 * pace + 5.0, behind);
+    }
+    return clamp(hull + arm * 0.8, 0.0, 1.0) * (0.25 + 0.75 * pace);
+  }
+
   void main() {
-    // Two layers of ripples drifting across each other so the sun breaks into sparkles; they calm down with distance.
     vec2 p = vWorld.xz;
     float dist = length(cameraPosition - vWorld);
+    float near = 1.0 - smoothstep(40.0, 230.0, dist);
+    // Medium waves too short for the mesh: they only bend the light, with the same lean-in crests as the swell.
+    vec3 n = vNormal;
+    for (int i = 0; i < 4; i++) {
+      float fi = float(i);
+      vec2 d = normalize(vec2(cos(fi * 2.1 + 0.6), sin(fi * 2.1 + 0.6)));
+      float k = 6.2832 / (9.0 - fi * 1.7), a = 0.05 - fi * 0.009;
+      float ph = dot(p, d) * k + uTime * sqrt(9.8 * k);
+      n.xz -= d * k * a * cos(ph) * near;
+      n.y -= 1.2 * k * a * sin(ph) * near;
+    }
+    // Two layers of small ripples drifting across each other so the sun breaks into sparkles.
     vec3 r1 = texture2D(uRipples, p * 0.045 + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
     vec3 r2 = texture2D(uRipples, p * 0.083 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
-    float ripple = 0.85 * (1.0 - smoothstep(40.0, 230.0, dist)) + 0.12;
-    vec3 n = normalize(vNormal + vec3(r1.x + r2.x * 0.7, 0.0, r1.y + r2.y * 0.7) * ripple);
+    n = normalize(n + vec3(r1.x + r2.x * 0.7, 0.0, r1.y + r2.y * 0.7) * uRippleK * (0.75 * near + 0.1));
 
     vec3 view = normalize(cameraPosition - vWorld);
-    float fres = pow(1.0 - max(dot(n, view), 0.0), 4.0);
+    float ndv = max(dot(n, view), 0.0);
+    float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
 
-    // Shallow turquoise water and surf around the islands.
-    float lagoon = 0.0, surf = 0.0;
+    // Islands: turquoise shallows, sand showing through right at the beach, light rippling on the bottom, and surf.
+    float lagoon = 0.0, sand = 0.0, surf = 0.0;
     for (int i = 0; i < ${MAX_ISLES}; i++) {
       if (uIsles[i].z <= 0.0) continue;
       float d = length(p - uIsles[i].xy) - uIsles[i].z;
-      lagoon = max(lagoon, 1.0 - smoothstep(0.0, 22.0, d));
+      lagoon = max(lagoon, 1.0 - smoothstep(0.0, 24.0, d));
+      sand = max(sand, 1.0 - smoothstep(-2.0, 7.0, d));
       float band = 1.0 - smoothstep(0.0, 2.2, abs(d - 1.5 - sin(uTime * 1.3 + atan(p.y - uIsles[i].y, p.x - uIsles[i].x) * 5.0) * 0.8));
       surf = max(surf, band * step(-1.0, d));
     }
 
-    vec3 body = mix(uDeep, uShallow, clamp(vHeight * 0.6 + 0.45, 0.0, 1.0));
+    // Deep water reads dark looking straight down and lighter toward the horizon; crests lighten it too.
+    vec3 body = mix(uDeep, uShallow, clamp(vHeight * 0.5 + 0.35 + (1.0 - ndv) * 0.35, 0.0, 1.0));
     // Sunlight shining through the thin tops of the waves, strongest when you look toward the sun.
     vec2 sunH = normalize(uSunDir.xz), lookH = normalize(-view.xz + 1e-4);
     float back = pow(clamp(dot(lookH, sunH), 0.0, 1.0), 3.0);
     float glow = smoothstep(0.05, 0.95, vHeight) * (0.3 + 0.7 * back) * clamp(1.0 - n.y + 0.35, 0.0, 1.0);
     body = mix(body, uGlow, clamp(glow, 0.0, 1.0) * 0.55);
     body = mix(body, uLagoon, lagoon * 0.85);
-    vec3 refl = mix(uHorizon, uSky, clamp(reflect(-view, n).y * 2.0, 0.0, 1.0));
-    vec3 col = mix(body, refl, fres * 0.5);
+    float caustic = pow(1.0 - abs(noise(p * 0.45 + uTime * 0.12) * 2.0 - 1.0), 8.0) + pow(1.0 - abs(noise(p * 0.7 - uTime * 0.1 + 9.0) * 2.0 - 1.0), 8.0);
+    body = mix(body, uSand, sand * 0.55);
+    body += vec3(0.9, 1.0, 0.95) * caustic * lagoon * 0.18;
+
+    vec3 col = mix(body, skyColor(reflect(-view, n)), fres * 0.85);
 
     // Sun glint.
     vec3 h = normalize(uSunDir + view);
-    float spec = pow(max(dot(n, h), 0.0), 320.0) * 2.4 + pow(max(dot(n, h), 0.0), 60.0) * 0.06;
-    col += uSunColor * spec;
+    float nh = max(dot(n, h), 0.0);
+    col += uSunColor * (pow(nh, 400.0) * 3.0 + pow(nh, 60.0) * 0.05);
 
-    // Foam on wave crests, at the shore and in the ship's wake.
+    // Foam on wave crests, at the shore, around the hulls and in the wakes.
     float crest = smoothstep(0.78, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
     float wake = 0.0;
     for (int i = 0; i < ${TRAIL}; i++) {
@@ -157,8 +219,11 @@ const fragment = /* glsl */`
       float w = t.w * (0.5 + t.z * 1.6);
       wake = max(wake, (1.0 - smoothstep(w * 0.4, w, d)) * (1.0 - t.z));
     }
-    float foamTex = noise(p * 3.0 + uTime * 0.4) * 0.6 + noise(p * 7.0 - uTime) * 0.4;
-    float foam = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7, 0.0, 1.0) * smoothstep(0.25, 0.6, foamTex + 0.2);
+    float ships = max(shipFoam(p, uShips[0], uShipSize[0]), shipFoam(p, uShips[1], uShipSize[1]));
+    // Foam is lace, not paint: the more of it there is, the more of the pattern fills in.
+    float lace = texture2D(uFoam, p * 0.11 + uTime * vec2(0.012, 0.004)).a * 0.65 + texture2D(uFoam, p * 0.27 - uTime * vec2(0.006, 0.015)).a * 0.35;
+    float amount = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7 + ships, 0.0, 1.0);
+    float foam = amount * smoothstep(0.12, 0.5, lace + amount * 0.45);
     col = mix(col, vec3(0.95, 0.98, 1.0), foam);
 
     col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
@@ -184,6 +249,11 @@ export class Sea {
       uLagoon: { value: new THREE.Color('#3fd0c9') },
       uGlow: { value: new THREE.Color('#2fc4b2') },
       uRipples: { value: rippleNormals() },
+      uRippleK: { value: 1 },
+      uFoam: { value: blankFoam() },
+      uSand: { value: new THREE.Color('#e9d9a6') },
+      uShips: { value: [new THREE.Vector4(), new THREE.Vector4()] },
+      uShipSize: { value: [new THREE.Vector2(1, 1), new THREE.Vector2(1, 1)] },
       uSky: { value: new THREE.Color('#6fa8d6') },
       uHorizon: { value: new THREE.Color('#cfe6ef') },
       uFogColor: { value: fog.color },
@@ -197,6 +267,20 @@ export class Sea {
     scene.add(this.mesh);
     this.trail = [];
     this.trailT = 0;
+    // Артем's ripple normal map and foam pattern take over from the generated stand-ins once they are in.
+    const tex = new THREE.TextureLoader(), base = import.meta.env ? import.meta.env.BASE_URL : './';
+    tex.load(`${base}textures/sea/sea_ripple_normal_1024.png`, t => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.NoColorSpace;
+      t.anisotropy = 4;
+      this.uniforms.uRipples.value = t;
+      this.uniforms.uRippleK.value = .2;
+    });
+    tex.load(`${base}textures/sea/sea_foam_white_alpha_512.png`, t => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 4;
+      this.uniforms.uFoam.value = t;
+    });
   }
 
   setIslands(list) {
@@ -205,6 +289,11 @@ export class Sea {
 
   // Ships leave a fading line of foam behind them.
   addWake(dt, ships) {
+    ships.slice(0, 2).forEach((s, i) => {
+      const live = s.sinking < .3 && s.mesh.parent;
+      this.uniforms.uShips.value[i].set(s.pos.x, s.pos.z, s.heading, live ? Math.abs(s.speed) : 0);
+      this.uniforms.uShipSize.value[i].set(s.mesh.userData.length / 2, s.mesh.userData.width / 2);
+    });
     this.trailT -= dt;
     if (this.trailT <= 0) {
       this.trailT = .09;

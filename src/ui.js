@@ -59,9 +59,11 @@ export class UI {
         this.marks.set(m.label, el);
       }
       const x = Math.max(-1, Math.min(1, -m.ang / (Math.PI / 2)));
-      el.style.left = `${50 + x * 46}%`;
       el.classList.toggle('next', !!m.goal);
       el.innerHTML = `${m.icon} <span>${m.label}</span><small>${m.dist} м</small>`;
+      // Pinned to an edge, the whole label stays on the strip.
+      const W = this.compass.clientWidth, half = el.offsetWidth / 2 + 6;
+      el.style.left = `${Math.max(half, Math.min(W - half, (50 + x * 46) / 100 * W))}px`;
     }
     for (const [k, el] of this.marks) if (!seen.has(k)) { el.remove(); this.marks.delete(k); }
     // A mark that runs into the next-island mark keeps only its icon.

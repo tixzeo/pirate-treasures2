@@ -5,6 +5,7 @@ import { buildIsland, dressIsland, buildMarker, buildPier, buildKitPier, buildBe
 import { kitReady } from './kit.js';
 import { ISLANDS, BOSS_HOME, SCENERY } from './islands.js';
 import { Effects } from './fx.js';
+import { SeaLife } from './life.js';
 import { character } from './characters.js';
 import { sfx } from './sound.js';
 
@@ -73,6 +74,7 @@ export class World {
     this.bossBeaten = false;
     this.crew = {};
     // Артем's models replace the built-in ships and islands as soon as they are in; the crew boards after that.
+    this.life = new SeaLife(this);
     this.kitDone = kitReady.then(() => this.applyKit()).catch(e => console.warn('World kit not applied', e));
     this.loadCrew();
 
@@ -113,17 +115,12 @@ export class World {
     }
     const kinds = ['island_small_palm_cove', 'island_medium_lagoon', 'island_large_volcanic'];
     SCENERY.forEach(([, , , seed], i) => dressIsland(this.scenery[i], kinds[seed % 3], null, seed));
+    this.life.build();
   }
 
   // Артем's characters on deck: the captain at the helm, the bosun amidships, Tim once he has joined, Scar on his own quarterdeck.
   async loadCrew() {
-    const place = (ship, fig, x, z, castle = false, turn = 0) => {
-      const u = ship.mesh.userData;
-      fig.position.set(x, castle ? u.castle.y : u.deckY, castle ? u.castle.z : z * u.length / 2);
-      fig.rotation.y = Math.PI + turn; // the bow is -Z, the figures face +Z
-      ship.mesh.add(fig);
-      return fig;
-    };
+    const place = (...a) => this.board(...a);
     try {
       await this.kitDone;
       const [captain, bosun, tim, scar] = await Promise.all([
@@ -141,10 +138,24 @@ export class World {
     }
   }
 
+  board(ship, fig, x, z, castle = false, turn = 0) {
+    const u = ship.mesh.userData;
+    fig.position.set(x, castle ? u.castle.y : u.deckY, castle ? u.castle.z : z * u.length / 2);
+    fig.rotation.y = Math.PI + turn; // the bow is -Z, the figures face +Z
+    ship.mesh.add(fig);
+    return fig;
+  }
+
   syncCrew() {
     const { tim, scar } = this.crew;
     if (tim) tim.visible = !!this.bossGone;
-    if (scar) scar.visible = this.boss.sinking === 0;
+    // Scar stays on his quarterdeck until the schooner is hit for good, then he is in his rowboat or out of sight.
+    if (scar) {
+      const boat = this.life.boat;
+      if (boat && scar.parent !== boat.mesh) this.board(boat, scar, 0, .3, false, Math.PI);
+      if (!boat && scar.parent !== this.boss.mesh) this.board(this.boss, scar, 0, 0, true);
+      scar.visible = !!boat || this.boss.sinking === 0;
+    }
   }
 
   resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
@@ -328,6 +339,7 @@ export class World {
     p.update(dt, t);
     if (!this.bossGone) this.boss.update(dt, t);
     this.updateFloaters(dt, t);
+    this.life.update(dt, t);
     // Ships cannot sail through the islands.
     for (const isl of this.scene.children.filter(o => o.userData.radius)) {
       for (const v of [p, this.boss]) {
@@ -366,7 +378,7 @@ export class World {
     for (let i = this.queue.length - 1; i >= 0; i--) if (this.queue[i].at <= t) this.shot(this.queue.splice(i, 1)[0]);
     this.fx.update(dt, t, b => this.onBall(b));
     this.sea.update(t, p.pos);
-    this.sea.addWake(dt, [p, this.boss]);
+    this.sea.addWake(dt, [p, this.bossGone && this.life.boat ? this.life.boat : this.boss]);
     const goal = this.target(), dock = this.dockState();
     // The berth outline: gold while you line up, green once she lies right.
     for (const isl of this.isles) {
@@ -447,6 +459,7 @@ export class World {
     b.speed *= 1 - dt * .8;
     b.sinking = Math.min(1, b.sinking + dt / 12);
     if (before === 0) {
+      this.life.launchBoat(b, this.player.pos);
       this.syncCrew(); // Scar is off to his rowing boat
       this.fx.burst('debris', b.pos.clone().setY(1.5), 14, 1.2, 7);
       this.spawnFloaters(b.pos, 9);
@@ -469,6 +482,7 @@ export class World {
 
   // Barrels and planks left floating where a ship went down; they drift and fade after a while.
   spawnFloaters(at, n) {
+    if (this.life.spawnWreck(at, n)) return;
     this.floaters = this.floaters || [];
     const wood = new THREE.MeshStandardMaterial({ color: '#7a4a28', roughness: .9, flatShading: true, transparent: true });
     for (let i = 0; i < n; i++) {
@@ -551,6 +565,7 @@ export class World {
     b.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     if (this.bossGone) this.scene.add(b.mesh);
     this.bossBeaten = this.bossGone = false;
+    this.life.clearBoat();
     this.syncCrew();
     this.fx.clearBalls();
     this.queue = [];
