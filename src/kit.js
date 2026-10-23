@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { detailKind, withDetail } from './detail.js';
+import { mergeStatic } from './merge.js';
 
 // Артем's World Kit (public/models/kit): ships, islands, docks, props and match-3 pieces.
 // Y up, ship bows to -Z with the waterline at y = 0, docks run along +Z. Geometry is meshopt-compressed.
@@ -25,6 +27,10 @@ const METAL = /Cannon|Muzzle|Nail|Hoop|Band|Bollard|Lantern|Doubloon|Compass_Blu
 
 // The water pack names its materials well, so there the material name says what is metal.
 const WATER_METAL = /iron|metal|nail|chain|ring|lifting eye|cap|brass|oarlock|hoop|lamp|cage|roof/i;
+
+// Parts ship.js and island.js find by name: hull, decks and beach for sizing, muzzles for the guns,
+// sails, seams and flags to sway, the island's own dock to hide.
+const KEEP = /_CarvedHull$|_Deck$|_Quarterdeck$|_CannonMuzzle_|_Sail|_Flag_|_Beach$|_Dock_/;
 
 export const kit = {};
 export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}models/${path.includes('/') ? path : 'kit/' + path}.glb`).then(g => {
@@ -55,7 +61,12 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     }
     o.material.envMapIntensity = .45; // the board's room reflections otherwise wash flat tops out to white
     if (/Sail|Flag|Wing|Fin|Canvas/.test(o.name)) o.material.side = THREE.DoubleSide;
+    // Wood grain, sailcloth, sand and stone from the texture pack; the match-3 pieces stay clean.
+    const kind = !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
+    if (kind) o.material = withDetail(o.material, kind);
   });
+  // Static parts welded per material; what the game looks up by name or animates stays separate.
+  if (!water && !/^(token|tile)_/.test(f)) mergeStatic(g.scene, KEEP);
   kit[f] = g.scene;
 }).catch(e => {
   // Sea life is decoration: the game goes on without any piece of it.
