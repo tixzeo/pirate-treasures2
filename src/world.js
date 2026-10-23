@@ -355,6 +355,7 @@ export class World {
     if (!this.bossGone) this.boss.update(dt, t);
     this.updateFloaters(dt, t);
     this.life.update(dt, t);
+    for (const fig of Object.values(this.crew)) fig?.userData.mixer?.update(dt);
     // Ships cannot sail through the islands.
     for (const isl of this.scene.children.filter(o => o.userData.radius)) {
       for (const v of [p, this.boss]) {

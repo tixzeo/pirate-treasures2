@@ -1,23 +1,34 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // Артем's character models (public/models/characters), squeezed for the web with gltf-transform:
 // meshopt geometry and 256px WebP maps. The source files are Z-up, so each one is stood upright here,
 // scaled to a height, set on its feet at y = 0 and turned to face +Z.
+// Rigged ones (so far the captain) are already Y-up and facing +Z; they come with an AnimationMixer playing Idle.
 const base = import.meta.env ? import.meta.env.BASE_URL : './';
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const sources = new Map();
 
 function source(id) {
-  if (!sources.has(id)) sources.set(id, loader.loadAsync(`${base}models/characters/${id}.glb`).then(g => g.scene));
+  if (!sources.has(id)) sources.set(id, loader.loadAsync(`${base}models/characters/${id}.glb`).then(g => {
+    // The rigged exports leave out normals and metalness (so everything comes out as bare metal).
+    g.scene.traverse(o => {
+      if (!o.isMesh) return;
+      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+      if (g.animations.length) { o.material.metalness = /gold|metal|steel|iron/i.test(o.material.name) ? .5 : 0; o.material.roughness = .8; }
+    });
+    return g;
+  }));
   return sources.get(id);
 }
 
 // character('captain', 1.7) → Promise of a Group standing at the origin.
 export async function character(id, height = 1.7) {
-  const model = (await source(id)).clone(true);
-  model.rotation.x = -Math.PI / 2;
+  const src = await source(id), rigged = src.animations.length > 0;
+  const model = rigged ? SkeletonUtils.clone(src.scene) : src.scene.clone(true);
+  if (!rigged) model.rotation.x = -Math.PI / 2;
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
   model.scale.setScalar(height / size.y);
@@ -30,6 +41,13 @@ export async function character(id, height = 1.7) {
   g.add(model);
   g.userData.id = id;
   g.userData.height = height;
+  if (rigged) {
+    const mixer = new THREE.AnimationMixer(model);
+    g.userData.mixer = mixer;
+    g.userData.actions = Object.fromEntries(src.animations.map(a => [a.name, mixer.clipAction(a)]));
+    const idle = g.userData.actions.Idle;
+    if (idle) { idle.play(); mixer.setTime(Math.random() * idle.getClip().duration); }
+  }
   return g;
 }
 
