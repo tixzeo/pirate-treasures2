@@ -4,6 +4,8 @@ import { Match3 } from './match3/view.js';
 import { UI } from './ui.js';
 import { updateTweens } from './tween.js';
 import { sfx, setMuted, muted } from './sound.js';
+import { loadSave, writeSave, clearSave } from './save.js';
+import { setupGod, putSpecial } from './god.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -16,12 +18,26 @@ const ui = new UI();
 const world = new World(renderer, ui);
 const match = new Match3(renderer, ui);
 let mode = 'intro';
-let gold = 0;
-const addGold = g => { gold += g; ui.setGold(gold); };
+let speed = 1;
+const save = loadSave();
+const persist = () => {
+  save.done = world.isles.filter(i => i.userData.done).map(i => i.userData.def.name);
+  save.bossBeaten = world.bossBeaten;
+  writeSave(save);
+};
+const addGold = g => { save.gold += g; ui.setGold(save.gold); persist(); };
+ui.setGold(save.gold);
+world.applySave(save);
 world.onGold = addGold;
-
-// The first island from part one: 20 moves, five kinds of treasure, 800 points.
-const ISLAND = { name: 'Остров Креста', moves: 20, types: 5, score: 800 };
+world.onBossBeaten = persist;
+// The victory story waits until the schooner has gone under.
+world.onBossGone = () => ui.dialog({
+  title: 'Победа!',
+  icon: 'crown',
+  text: 'Шрам уплывает на шлюпке, грозя кулаком. А из воды к вам карабкается мальчишка: «Я больше не служу Шраму! Возьмите меня юнгой, я знаю все его хитрости». Юнга Тим теперь в команде.',
+  gold: 500,
+  buttons: [['Йо-хо-хо!', () => ui.closeDialog()]],
+});
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -77,25 +93,35 @@ $('soundBtn').addEventListener('click', e => { setMuted(!muted); e.target.setAtt
 
 // Landing: the ship drops anchor and the treasure hunt starts on the island.
 function land() {
-  if (mode !== 'sea' || ui.open) return;
+  const isle = world.nearIsland();
+  if (mode !== 'sea' || ui.open || !isle) return;
+  const def = isle.userData.def;
+  const level = { ...def.level, name: def.name };
   mode = 'match';
   world.player.throttle = input.throttle = 0;
   world.player.speed = 0;
   ui.mode('match');
-  match.start(ISLAND, ({ win, gold: g }) => {
+  const onEnd = ({ win, gold: g }) => {
     ui.dialog(win ? {
       title: 'Клад добыт!',
-      text: 'Под крестом был зарыт сундук с дублонами. Команда грузит добычу в трюм. Пора поднимать паруса!',
+      text: def.story,
       gold: g,
-      buttons: [['На корабль', () => { ui.closeDialog(); addGold(g); world.islandDone = true; backToSea(); }]],
+      buttons: [['На корабль', () => {
+        ui.closeDialog(); isle.userData.done = true; addGold(g); backToSea();
+        const next = world.target();
+        if (next) ui.banner(next.kind === 'boss' ? 'Следующая цель: «Каракатица»' : `Следующая цель: ${next.name}`,
+          next.kind === 'boss' ? 'Плывите за золотой стрелкой. Шхуна Шрама ждёт.' : 'Плывите туда, куда показывает стрелка вверху экрана.', 4000, next.kind === 'boss');
+      }]],
     } : {
       title: 'Ходы кончились',
+      icon: 'hook',
       text: 'Клад так и не нашли, но кое-что команда всё же подобрала. Можно попробовать снова.',
       gold: g,
-      buttons: [['Ещё раз', () => { ui.closeDialog(); addGold(g); match.start(ISLAND, match.onEnd); }],
+      buttons: [['Ещё раз', () => { ui.closeDialog(); addGold(g); match.start(level, onEnd); }],
         ['На корабль', () => { ui.closeDialog(); addGold(g); backToSea(); }]],
     });
-  });
+  };
+  match.start(level, onEnd);
 }
 function backToSea() {
   match.active = false;
@@ -110,13 +136,15 @@ $('go').addEventListener('click', () => {
   ui.mode('sea');
   input.throttle = .6;
   sfx('win');
+  const first = world.target();
+  if (first) ui.banner(`${save.done.length ? 'Цель' : 'Первая цель'}: ${first.name}`, 'Стрелка вверху показывает, куда плыть. Над островом горит столб света.', 4500, false);
 });
 ui.mode('intro');
 
 const clock = new THREE.Clock();
 let t = 0;
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 1 / 20);
+  const dt = Math.min(clock.getDelta(), 1 / 20) * speed;
   t += dt;
   updateTweens(dt * 1000);
   if (mode === 'match') {
@@ -124,9 +152,61 @@ renderer.setAnimationLoop(() => {
     match.render();
   } else {
     if (mode === 'sea' && !ui.open) readKeys(dt);
-    world.update(mode === 'sea' && !ui.open ? dt : dt * .2, input);
+    // Dialogs hold the helm but the sea keeps moving.
+    world.update(dt, mode === 'sea' && !ui.open ? input : { throttle: world.player.throttle * .98, rudder: 0 });
     world.render();
   }
+});
+
+// God menu: testing tools for the prototype.
+setupGod({
+  mode: () => mode,
+  isles: () => world.isles.map(i => ({ name: i.userData.def.name, done: i.userData.done })),
+  reset() {
+    clearSave();
+    Object.assign(save, loadSave());
+    ui.setGold(save.gold);
+    ui.closeDialog();
+    if (mode === 'match') backToSea();
+    world.resetProgress();
+    input.throttle = 0;
+    ui.banner('Прогресс сброшен', `Первая цель: ${world.target().name}`, 3000, false);
+  },
+  addGold,
+  teleport(i) {
+    if (mode === 'match') backToSea();
+    if (i === 'start') world.teleport(new THREE.Vector3(0, 0, -30), 30);
+    else if (i === 'boss') world.teleport(world.boss.pos, 95);
+    else world.teleport(world.isles[i].position, world.isles[i].userData.radius + 16);
+  },
+  toggleIsle(i) { const d = world.isles[i].userData; d.done = !d.done; persist(); },
+  matchWin() {
+    if (mode !== 'match' || match.over) return;
+    const lv = match.level, b = match.board;
+    if (lv.score) b.score = Math.max(b.score, lv.score);
+    for (const t in lv.collect || {}) b.collected[t] = Math.max(b.collected[t] || 0, lv.collect[t]);
+    match.hud(); match.checkEnd();
+  },
+  matchMoves(n) { if (mode === 'match') { match.moves += n; match.hud(); } },
+  matchSpecial(t) { if (mode === 'match' && !match.busy) putSpecial(match, t); },
+  matchShuffle() { if (mode === 'match' && !match.busy) match.play(match.board.shuffle()); },
+  sinkBoss() {
+    if (world.bossBeaten) return;
+    world.boss.hp = 0;
+    world.winBattle();
+  },
+  heal() { const p = world.player; p.hp = p.maxHp; p.sinking = 0; world.lost = false; world.ui.battleHud(world.state === 'battle' ? p : null, world.boss); },
+  immortal: () => !!world.immortal,
+  setImmortal(v) { world.immortal = v; },
+  speed: () => speed,
+  setSpeed(v) { speed = v; },
+  state: () => ({
+    version: '0.2.0', mode, save: { ...save }, state: world.state,
+    pos: world.player.pos.toArray().map(v => Math.round(v)), heading: +world.player.heading.toFixed(2),
+    hp: world.player.hp, boss: { hp: world.boss.hp, sinking: +world.boss.sinking.toFixed(2), gone: !!world.bossGone },
+    target: world.target() && world.target().name,
+    match: mode === 'match' ? { level: match.level.name, moves: match.moves, score: match.board.score, collected: match.board.collected } : null,
+  }),
 });
 
 // Handy for checks from the console.

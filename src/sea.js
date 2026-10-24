@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 
-// A few long swells added together. Ships read the same function to bob on the waves.
+// A few long swells added together. Ships read waveHeight() to bob on the same waves the shader draws.
 const SWELLS = [
   { dir: [1, .3], len: 38, amp: .55, speed: 1.1 },
   { dir: [-.4, 1], len: 21, amp: .3, speed: 1.5 },
@@ -16,64 +16,214 @@ export function waveHeight(x, z, t) {
   return h;
 }
 
-const SIZE = 600, SEG = 150, STEP = SIZE / SEG;
+const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
+export const MAX_ISLES = 8, TRAIL = 28;
+
+const vertex = /* glsl */`
+  uniform float uTime;
+  uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
+  uniform float uAmp[4];
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+  varying float vHeight;
+  void main() {
+    vec4 w = modelMatrix * vec4(position, 1.0);
+    float h = 0.0; float dx = 0.0; float dz = 0.0;
+    for (int i = 0; i < 4; i++) {
+      float ph = dot(w.xz, uSwell[i].xy) * uSwell[i].z + uTime * uSwell[i].w;
+      h += uAmp[i] * sin(ph);
+      float c = uAmp[i] * uSwell[i].z * cos(ph);
+      dx += c * uSwell[i].x; dz += c * uSwell[i].y;
+    }
+    w.y += h;
+    vWorld = w.xyz;
+    vHeight = h;
+    vNormal = normalize(vec3(-dx, 1.0, -dz));
+    gl_Position = projectionMatrix * viewMatrix * w;
+  }
+`;
+
+const fragment = /* glsl */`
+  uniform float uTime;
+  uniform vec3 uSunDir;
+  uniform vec3 uSunColor;
+  uniform vec3 uDeep;
+  uniform vec3 uShallow;
+  uniform vec3 uLagoon;
+  uniform vec3 uSky;
+  uniform vec3 uHorizon;
+  uniform vec3 uFogColor;
+  uniform float uFogNear;
+  uniform float uFogFar;
+  uniform vec3 uIsles[${MAX_ISLES}];   // x, z, shore radius
+  uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
+  varying vec3 vWorld;
+  varying vec3 vNormal;
+  varying float vHeight;
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+  }
+
+  void main() {
+    // Small ripples on top of the swell so the sun breaks into sparkles.
+    vec2 p = vWorld.xz;
+    vec3 n = vNormal;
+    n.x += (noise(p * 0.9 + uTime * 0.6) - 0.5) * 0.22 + (noise(p * 2.3 - uTime * 0.9) - 0.5) * 0.12;
+    n.z += (noise(p * 0.8 - uTime * 0.5 + 7.0) - 0.5) * 0.22 + (noise(p * 2.1 + uTime * 0.8 + 3.0) - 0.5) * 0.12;
+    n = normalize(n);
+
+    vec3 view = normalize(cameraPosition - vWorld);
+    float fres = pow(1.0 - max(dot(n, view), 0.0), 4.0);
+
+    // Shallow turquoise water and surf around the islands.
+    float lagoon = 0.0, surf = 0.0;
+    for (int i = 0; i < ${MAX_ISLES}; i++) {
+      if (uIsles[i].z <= 0.0) continue;
+      float d = length(p - uIsles[i].xy) - uIsles[i].z;
+      lagoon = max(lagoon, 1.0 - smoothstep(0.0, 22.0, d));
+      float band = 1.0 - smoothstep(0.0, 2.2, abs(d - 1.5 - sin(uTime * 1.3 + atan(p.y - uIsles[i].y, p.x - uIsles[i].x) * 5.0) * 0.8));
+      surf = max(surf, band * step(-1.0, d));
+    }
+
+    vec3 body = mix(uDeep, uShallow, clamp(vHeight * 0.6 + 0.45, 0.0, 1.0));
+    body = mix(body, uLagoon, lagoon * 0.85);
+    vec3 refl = mix(uHorizon, uSky, clamp(reflect(-view, n).y * 2.0, 0.0, 1.0));
+    vec3 col = mix(body, refl, fres * 0.5);
+
+    // Sun glint.
+    vec3 h = normalize(uSunDir + view);
+    float spec = pow(max(dot(n, h), 0.0), 320.0) * 2.4 + pow(max(dot(n, h), 0.0), 60.0) * 0.06;
+    col += uSunColor * spec;
+
+    // Foam on wave crests, at the shore and in the ship's wake.
+    float crest = smoothstep(0.78, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
+    float wake = 0.0;
+    for (int i = 0; i < ${TRAIL}; i++) {
+      vec4 t = uTrail[i];
+      if (t.w <= 0.0) continue;
+      float d = length(p - t.xy);
+      float w = t.w * (0.5 + t.z * 1.6);
+      wake = max(wake, (1.0 - smoothstep(w * 0.4, w, d)) * (1.0 - t.z));
+    }
+    float foamTex = noise(p * 3.0 + uTime * 0.4) * 0.6 + noise(p * 7.0 - uTime) * 0.4;
+    float foam = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7, 0.0, 1.0) * smoothstep(0.25, 0.6, foamTex + 0.2);
+    col = mix(col, vec3(0.95, 0.98, 1.0), foam);
+
+    float dist = length(cameraPosition - vWorld);
+    col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
 
 export class Sea {
-  constructor(scene) {
+  constructor(scene, sunDir) {
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
     geo.rotateX(-Math.PI / 2);
-    const colors = new Float32Array(geo.attributes.position.count * 3);
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-      vertexColors: true, roughness: .6, metalness: .05, flatShading: true,
-    }));
-    this.mesh.receiveShadow = true;
+    const fog = scene.fog;
+    this.uniforms = {
+      uTime: { value: 0 },
+      uSwell: { value: SWELLS.map(s => new THREE.Vector4(s.dir[0], s.dir[1], s.k, s.speed)) },
+      uAmp: { value: SWELLS.map(s => s.amp) },
+      uSunDir: { value: sunDir.clone().normalize() },
+      uSunColor: { value: new THREE.Color('#fff2d0') },
+      uDeep: { value: new THREE.Color('#06374f') },
+      uShallow: { value: new THREE.Color('#1d7f99') },
+      uLagoon: { value: new THREE.Color('#3fd0c9') },
+      uSky: { value: new THREE.Color('#6fa8d6') },
+      uHorizon: { value: new THREE.Color('#cfe6ef') },
+      uFogColor: { value: fog.color },
+      uFogNear: { value: fog.near },
+      uFogFar: { value: fog.far },
+      uIsles: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector3()) },
+      uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
+    };
+    this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vertex, fragmentShader: fragment }));
+    this.mesh.frustumCulled = false;
     scene.add(this.mesh);
-    this.base = geo.attributes.position.array.slice();
-    this.deep = new THREE.Color('#0c4a66');
-    this.crest = new THREE.Color('#5fb7c9');
-    this.foam = new THREE.Color('#e6f6f7');
+    this.trail = [];
+    this.trailT = 0;
+  }
+
+  setIslands(list) {
+    list.slice(0, MAX_ISLES).forEach((isl, i) => this.uniforms.uIsles.value[i].set(isl.position.x, isl.position.z, isl.userData.shore));
+  }
+
+  // Ships leave a fading line of foam behind them.
+  addWake(dt, ships) {
+    this.trailT -= dt;
+    if (this.trailT <= 0) {
+      this.trailT = .09;
+      for (const s of ships) {
+        if (Math.abs(s.speed) < 1 || s.sinking >= 1) continue;
+        const back = s.forward().multiplyScalar(-s.mesh.userData.length * .45);
+        this.trail.push({ x: s.pos.x + back.x, z: s.pos.z + back.z, age: 0, w: s.mesh.userData.width * .55 * Math.min(1, Math.abs(s.speed) / 8) });
+      }
+    }
+    for (const t of this.trail) t.age += dt / 3.2;
+    this.trail = this.trail.filter(t => t.age < 1).slice(-TRAIL);
+    const u = this.uniforms.uTrail.value;
+    for (let i = 0; i < TRAIL; i++) {
+      const t = this.trail[i];
+      if (t) u[i].set(t.x, t.z, t.age, t.w); else u[i].set(0, 0, 0, 0);
+    }
   }
 
   // The grid follows the camera in whole cells so the waves stay put in the world.
   update(t, center) {
-    const ox = Math.round(center.x / STEP) * STEP, oz = Math.round(center.z / STEP) * STEP;
-    this.mesh.position.set(ox, 0, oz);
-    const pos = this.mesh.geometry.attributes.position, col = this.mesh.geometry.attributes.color;
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const x = this.base[i * 3] + ox, z = this.base[i * 3 + 2] + oz;
-      const h = waveHeight(x, z, t);
-      pos.array[i * 3 + 1] = h;
-      const k = THREE.MathUtils.clamp((h + .7) / 1.4, 0, 1);
-      c.copy(this.deep).lerp(this.crest, k);
-      if (h > .75) c.lerp(this.foam, Math.min(1, (h - .75) * 3));
-      col.array[i * 3] = c.r; col.array[i * 3 + 1] = c.g; col.array[i * 3 + 2] = c.b;
-    }
-    pos.needsUpdate = true; col.needsUpdate = true;
-    this.mesh.geometry.computeVertexNormals();
+    this.uniforms.uTime.value = t;
+    this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
   }
+}
+
+// Soft low-poly clouds far off.
+export function addClouds(scene) {
+  const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true, emissive: '#c8dbe6', emissiveIntensity: .35, fog: false });
+  const clouds = new THREE.Group();
+  let seed = 5;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < 18; i++) {
+    const c = new THREE.Group();
+    const n = 4 + Math.floor(rnd() * 4);
+    for (let j = 0; j < n; j++) {
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(8 + rnd() * 9, 1), mat);
+      puff.position.set((j - n / 2) * 10 + rnd() * 6, rnd() * 6, rnd() * 8);
+      puff.scale.y = .6;
+      c.add(puff);
+    }
+    const a = rnd() * Math.PI * 2, r = 380 + rnd() * 380;
+    c.position.set(Math.cos(a) * r, 70 + rnd() * 70, Math.sin(a) * r);
+    c.lookAt(0, c.position.y, 0);
+    clouds.add(c);
+  }
+  scene.add(clouds);
+  return clouds;
 }
 
 export function addSky(scene, renderer) {
   const sky = new Sky();
   sky.scale.setScalar(4000);
   const u = sky.material.uniforms;
-  u.turbidity.value = 4; u.rayleigh.value = 1.4; u.mieCoefficient.value = .004; u.mieDirectionalG.value = .85;
-  const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(68), THREE.MathUtils.degToRad(200));
+  u.turbidity.value = 2.2; u.rayleigh.value = 1.1; u.mieCoefficient.value = .003; u.mieDirectionalG.value = .86;
+  const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(72), THREE.MathUtils.degToRad(160));
   u.sunPosition.value.copy(sun);
   scene.add(sky);
-  scene.fog = new THREE.Fog('#a9cfdc', 90, 300);
+  scene.fog = new THREE.Fog('#b9dbe6', 110, 340);
 
-  scene.add(new THREE.HemisphereLight('#cfe8ff', '#1d4a5a', 1.1));
-  const light = new THREE.DirectionalLight('#fff1d6', 2.2);
-  light.position.copy(sun).multiplyScalar(120);
+  scene.add(new THREE.HemisphereLight('#d6ecff', '#1d5a6a', 1.25));
+  const light = new THREE.DirectionalLight('#fff1d6', 2.6);
   light.castShadow = true;
   light.shadow.mapSize.set(2048, 2048);
+  light.shadow.bias = -.0005;
   const cam = light.shadow.camera;
   cam.left = cam.bottom = -60; cam.right = cam.top = 60; cam.near = 1; cam.far = 400;
   scene.add(light, light.target);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = .6;
+  renderer.toneMappingExposure = .62;
   return { light, sun };
 }
