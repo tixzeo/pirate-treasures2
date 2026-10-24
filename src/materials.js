@@ -39,6 +39,9 @@ function tex(name, map, repeat, srgb) {
   return t;
 }
 
+// One tile per unit of UV, for shaders that make their own coordinates.
+export const rawTex = (name, map, srgb) => tex(name, map, [1, 1], srgb);
+
 const cache = new Map();
 
 // pbr('deck_oak', { repeat: 2, color: '#fff', normal: 1, ...extra MeshStandardMaterial options })

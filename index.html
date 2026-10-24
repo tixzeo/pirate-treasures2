@@ -32,8 +32,12 @@
     <button type="button" id="fireL" class="gun"><img src="./textures/icons/icon_cannon.png" alt="" class="flip">◀ Залп<i></i></button>
     <button type="button" id="fireR" class="gun">Залп ▶<img src="./textures/icons/icon_cannon.png" alt=""><i></i></button>
   </div>
-  <button type="button" id="dock" class="dock" hidden>Сойти на берег</button>
-  <p class="keys" id="keys">W/S — паруса, A/D — руль, Q/E — залп, Enter — на берег</p>
+  <div class="berth" id="berth" hidden>
+    <b>Швартовка</b>
+    <span id="bDist"></span><span id="bAng"></span><span id="bSpeed"></span>
+  </div>
+  <button type="button" id="dock" class="dock" hidden>Пришвартоваться</button>
+  <p class="keys" id="keys">W/S — паруса на шаг, A/D — руль, Q/E — залп, Enter — швартовка</p>
 </div>
 
 <div id="matchHud" hidden>
@@ -55,6 +59,7 @@
 
 <div class="intro" id="intro">
   <div class="card">
+    <img class="face" id="introFace" alt="">
     <h1>Пиратские сокровища 2</h1>
     <p>Капитан, корабль готов! На карте три острова с кладами, а за ними стоит «Каракатица» капитана Шрама. Золотая стрелка вверху экрана всегда показывает, куда плыть дальше.</p>
     <button type="button" id="go">Поднять паруса</button>

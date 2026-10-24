@@ -1,14 +1,23 @@
 import * as THREE from 'three';
 import { Sea, addSky, addClouds, waveHeight } from './sea.js';
-import { buildShip, Vessel } from './ship.js';
-import { buildIsland, buildBeacon, buildMarker } from './island.js';
+import { buildShip, dressShip, Vessel } from './ship.js';
+import { buildIsland, dressIsland, buildMarker, buildPier, buildKitPier, buildBerth, PIER_WIDTH, PIER_LENGTH } from './island.js';
+import { kitReady } from './kit.js';
 import { ISLANDS, BOSS_HOME, SCENERY } from './islands.js';
 import { Effects } from './fx.js';
+import { SeaLife } from './life.js';
+import { Atmosphere } from './atmosphere.js';
+import { Post, pickQuality } from './post.js';
+import { character } from './characters.js';
 import { sfx } from './sound.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
 const G = 9.8;
+const PIER = PIER_LENGTH;      // pier length, m
+// How exactly the ship must lie at the berth before she can moor.
+export const MOOR = { dist: 3, ang: THREE.MathUtils.degToRad(12), speed: 2.5 / 1.94 }; // speed: 2.5 knots
+const wrapAbs = a => Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
 
 // The open sea: the player's ship, the treasure islands in order, and the boss that patrols nearby.
 export class World {
@@ -17,10 +26,12 @@ export class World {
     this.ui = ui;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, 1, .5, 5000);
-    const { light, sun } = addSky(this.scene, renderer);
+    const { light, sun, sky, hemi } = addSky(this.scene, renderer);
     this.light = light;
     this.sea = new Sea(this.scene, sun);
-    addClouds(this.scene);
+    const clouds = addClouds(this.scene);
+    this.atmo = new Atmosphere(this, { light, sky, hemi, clouds, sea: this.sea, renderer });
+    this.post = new Post(renderer, this, pickQuality());
     this.fx = new Effects(this.scene);
 
     // Player: the brigantine from part one's shipyard.
@@ -28,19 +39,25 @@ export class World {
     this.scene.add(this.player.mesh);
     this.reload = { left: 0, right: 0 };
 
-    // Treasure islands, each with a ring on the water where you can land.
-    this.isles = ISLANDS.map(def => {
+    // Treasure islands, each with a pier facing the way you come from. You moor alongside it to go ashore.
+    this.isles = ISLANDS.map((def, i) => {
       const isl = buildIsland({ radius: def.radius, seed: def.seed });
       isl.position.set(def.x, 0, def.z);
       isl.userData.def = def;
       isl.userData.done = false;
-      const ring = buildBeacon(isl.userData.radius + 9);
-      ring.position.copy(isl.position).setY(.6);
-      isl.userData.ring = ring;
-      this.scene.add(isl, ring);
+      const prev = i ? new THREE.Vector3(ISLANDS[i - 1].x, 0, ISLANDS[i - 1].z) : new THREE.Vector3();
+      const dir = prev.sub(isl.position).normalize();          // out from the island along the pier
+      const side = new THREE.Vector3(-dir.z, 0, dir.x);         // the side of the pier the berth is on
+      const root = isl.position.clone().addScaledVector(dir, def.radius * .95);
+      const pier = buildPier(PIER);
+      pier.position.copy(root);
+      pier.rotation.y = Math.atan2(-dir.z, dir.x);
+      isl.userData.pier = { root, dir, side, mesh: pier, heading: Math.atan2(dir.x, dir.z) }; // heading: bow toward the island
+      this.scene.add(isl, pier);
+      this.layBerth(isl);
       return isl;
     });
-    const scenery = SCENERY.map(([x, z, r, seed]) => {
+    const scenery = this.scenery = SCENERY.map(([x, z, r, seed]) => {
       const isl = buildIsland({ radius: r, seed, chest: false, palms: 4 });
       isl.position.set(x, 0, z);
       this.scene.add(isl);
@@ -59,25 +76,152 @@ export class World {
     this.boss.reload = 2;
     this.scene.add(this.boss.mesh);
     this.bossBeaten = false;
+    this.crew = {};
+    // Артем's models replace the built-in ships and islands as soon as they are in; the crew boards after that.
+    // Deck lanterns on both ships: off by day, warm pools of light on deck after dusk.
+    this.lamps = [[this.player, '#ffb25a'], [this.boss, '#ff6a9a']].map(([v, col]) => {
+      const l = new THREE.PointLight(col, 0, 22, 1.6);
+      l.position.set(0, 2.4, 3.5);
+      v.mesh.add(l);
+      return l;
+    });
+    this.life = new SeaLife(this);
+    this.kitDone = kitReady.then(() => this.applyKit()).catch(e => console.warn('World kit not applied', e));
+    this.loadCrew();
 
     this.state = 'sail';
-    this.camYaw = 0;
+    this.camYaw = 0;       // view turned around the ship by dragging, radians
+    this.camPitch = 0;
+    this.camZoom = 1;
+    this.camDragAt = -9;
     this.camPos = new THREE.Vector3(0, 12, 30);
     this.time = 0;
     this.queue = [];
   }
 
-  resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+  // The berth lies alongside the pier, its outline sized to the player's ship.
+  layBerth(isl) {
+    const b = isl.userData.pier, u = this.player.mesh.userData;
+    b.berth = b.root.clone().addScaledVector(b.dir, PIER * .6).addScaledVector(b.side, PIER_WIDTH / 2 + u.width / 2 + .6);
+    // The island keeps ships off its beach, but never so far out that the berth itself is blocked.
+    isl.userData.block = Math.min(isl.userData.shore + 3, b.berth.distanceTo(isl.position) - u.width);
+    if (b.ghost) this.scene.remove(b.ghost);
+    b.ghost = buildBerth(u.length, u.width);
+    b.ghost.position.copy(b.berth);
+    b.ghost.rotation.y = b.heading;
+    this.scene.add(b.ghost);
+  }
 
-  // An unvisited treasure island close enough to land on, or null.
+  applyKit() {
+    dressShip(this.player.mesh, 'player_brigantine');
+    dressShip(this.boss.mesh, 'scar_karakatitsa');
+    for (const isl of this.isles) {
+      const { def, pier } = isl.userData;
+      // Our pier starts a few metres up the sand from where the model's beach meets the sea.
+      const coast = dressIsland(isl, def.kit, pier.dir);
+      if (coast) pier.root.copy(isl.position).addScaledVector(pier.dir, coast - 4);
+      const kitPier = buildKitPier(def.dock);
+      kitPier.position.copy(pier.root);
+      kitPier.rotation.copy(pier.mesh.rotation);
+      this.scene.remove(pier.mesh);
+      this.scene.add(kitPier);
+      pier.mesh = kitPier;
+      this.layBerth(isl);
+    }
+    const kinds = ['island_small_palm_cove', 'island_medium_lagoon', 'island_large_volcanic'];
+    SCENERY.forEach(([, , , seed], i) => dressIsland(this.scenery[i], kinds[seed % 3], null, seed));
+    this.life.build();
+  }
+
+  // Артем's characters on deck: the captain at the helm, the bosun amidships, Tim once he has joined, Scar on his own quarterdeck.
+  async loadCrew() {
+    const place = (...a) => this.board(...a);
+    try {
+      await this.kitDone;
+      const [captain, bosun, tim, scar] = await Promise.all([
+        character('captain', 1.75), character('bosun', 1.7), character('tim_cabin_boy', 1.35), character('captain_scar', 1.8)]);
+      const W = this.player.mesh.userData.width;
+      this.crew = {
+        captain: place(this.player, captain, 0, 0, true),
+        bosun: place(this.player, bosun, W * .22, .1, false, -.6),
+        tim: place(this.player, tim, -W * .1, -.62, false, .3),
+        scar: place(this.boss, scar, 0, 0, true),
+      };
+      this.syncCrew();
+    } catch (e) {
+      console.warn('Characters did not load', e);
+    }
+  }
+
+  board(ship, fig, x, z, castle = false, turn = 0) {
+    const u = ship.mesh.userData;
+    fig.position.set(x, castle ? u.castle.y : u.deckY, castle ? u.castle.z : z * u.length / 2);
+    fig.rotation.y = Math.PI + turn; // the bow is -Z, the figures face +Z
+    ship.mesh.add(fig);
+    return fig;
+  }
+
+  syncCrew() {
+    const { tim, scar } = this.crew;
+    if (tim) tim.visible = !!this.bossGone;
+    // Scar stays on his quarterdeck until the schooner is hit for good, then he is in his rowboat or out of sight.
+    if (scar) {
+      const boat = this.life.boat;
+      if (boat && scar.parent !== boat.mesh) this.board(boat, scar, 0, .3, false, Math.PI);
+      if (!boat && scar.parent !== this.boss.mesh) this.board(this.boss, scar, 0, 0, true);
+      scar.visible = !!boat || this.boss.sinking === 0;
+    }
+  }
+
+  resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.post.resize(); }
+
+  // How the ship lies against the nearest open berth: distance, angle off the pier line, speed, and whether each is good enough.
+  dockState() {
+    if (this.state !== 'sail' || this.player.hp <= 0) return null;
+    const p = this.player;
+    let best = null;
+    for (const isl of this.isles) {
+      if (isl.userData.done) continue;
+      const b = isl.userData.pier;
+      const dist = Math.hypot(p.pos.x - b.berth.x, p.pos.z - b.berth.z);
+      if (dist > 60 || (best && dist > best.dist)) continue;
+      const ang = Math.min(wrapAbs(p.heading - b.heading), wrapAbs(p.heading - b.heading - Math.PI));
+      best = { isle: isl, dist, ang, speed: Math.abs(p.speed) };
+    }
+    if (best) {
+      best.ok = { dist: best.dist < MOOR.dist, ang: best.ang < MOOR.ang, speed: best.speed < MOOR.speed };
+      best.ready = best.ok.dist && best.ok.ang && best.ok.speed;
+    }
+    return best;
+  }
+
+  // The island whose berth the ship is lying at, ready to moor, or null.
   nearIsland() {
-    return this.isles.find(isl => !isl.userData.done && this.player.pos.distanceTo(isl.position) < isl.userData.radius + 12) || null;
+    const d = this.dockState();
+    return d && d.ready ? d.isle : null;
+  }
+
+  // Tie up: lay the ship exactly in the berth, whichever way round she came in.
+  moor(isl) {
+    const b = isl.userData.pier, p = this.player;
+    p.pos.set(b.berth.x, p.pos.y, b.berth.z);
+    p.heading = wrapAbs(p.heading - b.heading) < Math.PI / 2 ? b.heading : b.heading + Math.PI;
+    p.speed = p.yaw = p.helm = 0;
+  }
+
+  // Put the ship out in the approach to a berth, lined up with it and stopped.
+  teleportBerth(isl, dist = 45) {
+    const b = isl.userData.pier, p = this.player;
+    p.pos.copy(b.berth).addScaledVector(b.dir, dist).setY(0);
+    p.heading = b.heading;
+    p.speed = p.yaw = p.helm = 0;
+    this.camPos.copy(p.pos).addScaledVector(b.dir, 28).setY(12);
   }
 
   // What to sail to next: the first unvisited island, then Scar, then nothing.
   target() {
     const isl = this.isles.find(i => !i.userData.done);
-    if (isl) return { kind: 'isle', name: isl.userData.def.name, pos: isl.position, isle: isl };
+    if (isl) return { kind: 'isle', name: isl.userData.def.name, pos: isl.userData.pier.berth, isle: isl };
     if (!this.bossBeaten) return { kind: 'boss', name: '«Каракатица»', pos: this.boss.pos };
     return null;
   }
@@ -210,12 +354,30 @@ export class World {
     p.update(dt, t);
     if (!this.bossGone) this.boss.update(dt, t);
     this.updateFloaters(dt, t);
+    this.life.update(dt, t);
+    for (const fig of Object.values(this.crew)) fig?.userData.mixer?.update(dt);
     // Ships cannot sail through the islands.
     for (const isl of this.scene.children.filter(o => o.userData.radius)) {
       for (const v of [p, this.boss]) {
         const d = v.pos.clone().sub(isl.position); d.y = 0;
-        const min = isl.userData.radius + 3;
+        const min = isl.userData.block || isl.userData.shore + 3;
         if (d.length() < min) { v.pos.addScaledVector(d.normalize(), min - d.length()); v.speed *= .5; }
+      }
+    }
+    // Nor through the piers: bow, middle and stern are kept clear of the planks.
+    for (const isl of this.isles) {
+      const b = isl.userData.pier;
+      for (const v of [p, this.boss]) {
+        if (v.sinking >= 1) continue;
+        const half = v.mesh.userData.width / 2 * .9, reach = v.mesh.userData.length * .42, f = v.forward();
+        for (const k of [-1, 0, 1]) {
+          const pt = v.pos.clone().addScaledVector(f, k * reach).sub(b.root);
+          const along = pt.dot(b.dir), across = pt.dot(b.side), clear = PIER_WIDTH / 2 + half;
+          if (along < -1 || along > PIER + .5 || Math.abs(across) >= clear) continue;
+          v.pos.addScaledVector(b.side, (Math.sign(across) || 1) * (clear - Math.abs(across)));
+          if (v === p && Math.abs(v.speed) > 2 && this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }
+          v.speed *= .6;
+        }
       }
     }
 
@@ -232,18 +394,19 @@ export class World {
     for (let i = this.queue.length - 1; i >= 0; i--) if (this.queue[i].at <= t) this.shot(this.queue.splice(i, 1)[0]);
     this.fx.update(dt, t, b => this.onBall(b));
     this.sea.update(t, p.pos);
-    this.sea.addWake(dt, [p, this.boss]);
-    const goal = this.target();
+    this.sea.addWake(dt, [p, this.bossGone && this.life.boat ? this.life.boat : this.boss]);
+    const goal = this.target(), dock = this.dockState();
+    // The berth outline: gold while you line up, green once she lies right.
     for (const isl of this.isles) {
-      const ring = isl.userData.ring, cur = goal && goal.isle === isl;
-      ring.visible = !isl.userData.done;
-      ring.scale.setScalar(1 + Math.sin(t * 2) * .03);
-      ring.material.opacity = (cur ? .6 : .25) + Math.sin(t * 3) * (cur ? .3 : .1);
-      ring.position.y = waveHeight(ring.position.x, ring.position.z, t) * .3 + .5;
+      const g = isl.userData.pier.ghost, here = dock && dock.isle === isl;
+      g.visible = !isl.userData.done;
+      g.position.y = waveHeight(g.position.x, g.position.z, t) * .4 + .25;
+      g.userData.setColor(here && dock.ready ? '#5be38a' : here ? '#ffd24a' : '#fff1c4');
     }
-    this.marker.visible = !!goal && this.state !== 'battle';
+    // Close to the berth the outline on the water takes over from the beam.
+    this.marker.visible = !!goal && this.state !== 'battle' && !(dock && dock.dist < 45 && goal.isle === dock.isle);
     if (goal) {
-      const h = goal.kind === 'isle' ? goal.isle.userData.radius * .6 + 14 : 26;
+      const h = goal.kind === 'isle' ? 14 : 26;
       this.marker.position.set(goal.pos.x, h + Math.sin(t * 2) * 1.2, goal.pos.z);
       this.marker.userData.arrow.rotation.y = t * 1.5;
       this.marker.userData.beam.material.opacity = .22 + Math.sin(t * 2.5) * .06;
@@ -251,12 +414,16 @@ export class World {
     }
 
     this.updateCamera(dt);
-    this.light.position.copy(p.pos).add(new THREE.Vector3(25, 80, 60));
+    this.atmo.update(dt, this.camera);
+    for (const l of this.lamps) l.intensity = 16 * this.atmo.night;
+    // Shadows never lie flatter than about 11 degrees, however low the sun.
+    const ld = this.atmo.keyDir.clone(); ld.y = Math.max(ld.y, .2); ld.normalize();
+    this.light.position.copy(p.pos).addScaledVector(ld, 100);
     this.light.target.position.copy(p.pos);
 
     this.ui.sailHud({
       speed: Math.abs(p.speed), throttle: p.throttle, reload: this.reload, reloadMax: RELOAD,
-      canDock: this.state === 'sail' && !!this.nearIsland(), battle: this.state === 'battle',
+      dock, battle: this.state === 'battle',
       marks: this.marks(),
       goal: goal && { name: goal.name, kind: goal.kind, dist: Math.round(goal.pos.distanceTo(p.pos)), ang: this.bearing(goal.pos) },
     });
@@ -266,24 +433,41 @@ export class World {
   marks() {
     const goal = this.target();
     const out = this.isles.filter(i => !i.userData.done).map(i => ({
-      ang: this.bearing(i.position), icon: '✕', label: i.userData.def.name, dist: Math.round(i.position.distanceTo(this.player.pos)), goal: goal && goal.isle === i,
+      ang: this.bearing(i.userData.pier.berth), icon: '✕', label: i.userData.def.name, dist: Math.round(i.userData.pier.berth.distanceTo(this.player.pos)), goal: goal && goal.isle === i,
     }));
     if (!this.bossBeaten) out.push({ ang: this.bearing(this.boss.pos), icon: '☠', label: 'Шрам', dist: Math.round(this.boss.pos.distanceTo(this.player.pos)), goal: goal && goal.kind === 'boss', foe: true });
     return out;
   }
+
+  // Turn the view: drag to orbit around the ship (dx, dy in pixels), wheel to zoom.
+  orbit(dx, dy) {
+    this.camYaw -= dx * .006;
+    this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * .004, -.3, .9);
+    this.camDragAt = this.time;
+  }
+  zoom(delta) { this.camZoom = THREE.MathUtils.clamp(this.camZoom * Math.exp(delta * .001), .55, 1.8); }
 
   updateCamera(dt) {
     const p = this.player, f = p.forward();
     // A tall phone screen sees less to the sides, so the camera stands further back.
     const k = THREE.MathUtils.clamp(1.25 / this.camera.aspect, 1, 2.1);
     const back = (this.state === 'battle' ? 34 : 26) * k, up = (this.state === 'battle' ? 15 : 10) * (1 + (k - 1) * .6);
-    const want = p.pos.clone().addScaledVector(f, -back).add(new THREE.Vector3(0, up, 0));
+    // Left alone while under way, a turned view drifts back behind the stern.
+    const dragging = this.time - this.camDragAt < .15;
+    if (this.time - this.camDragAt > 3 && Math.abs(p.speed) > 1) {
+      this.camYaw = Math.atan2(Math.sin(this.camYaw), Math.cos(this.camYaw)) * (1 - Math.min(1, dt * .9));
+      this.camPitch *= 1 - Math.min(1, dt * .9);
+    }
+    const dist = Math.hypot(back, up) * this.camZoom, elev = Math.atan2(up, back) + this.camPitch, yaw = p.heading + this.camYaw;
+    const want = p.pos.clone().add(new THREE.Vector3(Math.sin(yaw) * Math.cos(elev) * dist, Math.sin(elev) * dist, Math.cos(yaw) * Math.cos(elev) * dist));
     want.y = Math.max(want.y, 4);
-    this.camPos.lerp(want, Math.min(1, dt * 2.2));
+    this.camPos.lerp(want, Math.min(1, dt * (dragging ? 10 : 2.2)));
     this.camera.position.copy(this.camPos);
     this.shake = Math.max(0, (this.shake || 0) - dt);
     if (this.shake) this.camera.position.add(new THREE.Vector3((Math.random() - .5), (Math.random() - .5), 0).multiplyScalar(this.shake));
-    const look = p.pos.clone().addScaledVector(f, 10).add(new THREE.Vector3(0, 2, 0));
+    // Looking ahead of the bow from behind; the further the view is turned, the more it looks at the ship itself.
+    const ahead = p.pos.clone().addScaledVector(f, 10).add(new THREE.Vector3(0, 2, 0));
+    const look = ahead.lerp(p.pos.clone().setY(p.pos.y + 2), Math.min(1, Math.abs(Math.sin(this.camYaw / 2)) * 2));
     if ((this.state === 'battle' && this.boss.hp > 0) || (this.boss.hp <= 0 && !this.bossGone)) look.lerp(this.boss.pos, .25);
     this.camera.lookAt(look);
   }
@@ -295,6 +479,8 @@ export class World {
     b.speed *= 1 - dt * .8;
     b.sinking = Math.min(1, b.sinking + dt / 12);
     if (before === 0) {
+      this.life.launchBoat(b, this.player.pos);
+      this.syncCrew(); // Scar is off to his rowing boat
       this.fx.burst('debris', b.pos.clone().setY(1.5), 14, 1.2, 7);
       this.spawnFloaters(b.pos, 9);
     }
@@ -308,6 +494,7 @@ export class World {
     if (b.sinking >= 1) {
       this.bossGone = true;
       this.scene.remove(b.mesh);
+      this.syncCrew(); // Tim climbs aboard
       this.fx.burst('splash', b.pos.clone().setY(.3), 6, .8, 2);
       this.onBossGone && this.onBossGone();
     }
@@ -315,6 +502,7 @@ export class World {
 
   // Barrels and planks left floating where a ship went down; they drift and fade after a while.
   spawnFloaters(at, n) {
+    if (this.life.spawnWreck(at, n)) return;
     this.floaters = this.floaters || [];
     const wood = new THREE.MeshStandardMaterial({ color: '#7a4a28', roughness: .9, flatShading: true, transparent: true });
     for (let i = 0; i < n; i++) {
@@ -357,6 +545,7 @@ export class World {
     setTimeout(() => this.ui.dialog({
       title: 'Корабль пробит',
       icon: 'shield',
+      who: 'captain_scar',
       text: 'Шрам оказался сильнее. Плотники залатают пробоины, а в следующий раз держитесь к нему бортом и не подставляйте корму.',
       buttons: [['Починиться и снова в бой', () => { this.ui.closeDialog(); this.repair(); }]],
     }), 1200);
@@ -385,6 +574,7 @@ export class World {
       this.boss.hp = 0;
       this.scene.remove(this.boss.mesh);
     }
+    this.syncCrew();
   }
 
   // Back to a fresh voyage: islands open, Scar afloat, the ship at the start.
@@ -395,10 +585,12 @@ export class World {
     b.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     if (this.bossGone) this.scene.add(b.mesh);
     this.bossBeaten = this.bossGone = false;
+    this.life.clearBoat();
+    this.syncCrew();
     this.fx.clearBalls();
     this.queue = [];
     const p = this.player;
-    p.hp = p.maxHp; p.sinking = 0; p.speed = 0; p.heading = 0;
+    p.hp = p.maxHp; p.sinking = 0; p.speed = p.yaw = p.helm = 0; p.heading = 0;
     p.pos.set(0, 0, 0);
     this.camPos.set(0, 12, 30);
     this.lost = false;
@@ -412,9 +604,9 @@ export class World {
     from.y = 0;
     p.pos.copy(from);
     p.heading = 0;
-    p.speed = 0;
+    p.speed = p.yaw = p.helm = 0;
     this.camPos.copy(from).add(new THREE.Vector3(0, 12, 28));
   }
 
-  render() { this.renderer.render(this.scene, this.camera); }
+  render() { this.post.render(); }
 }

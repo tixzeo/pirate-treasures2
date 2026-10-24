@@ -1,5 +1,9 @@
 // DOM layer over the 3D view: HUD, compass strip, battle bars, banners and dialogs.
+import { SAILS, sailIndex } from './ship.js';
+import { MOOR } from './world.js';
+
 const $ = id => document.getElementById(id);
+const knots = ms => Math.round(ms * 1.94);
 
 export class UI {
   constructor() {
@@ -14,7 +18,7 @@ export class UI {
     $('matchHud').hidden = m !== 'match';
   }
 
-  sailHud({ speed, reload, reloadMax, canDock, battle, marks, goal }) {
+  sailHud({ speed, throttle, reload, reloadMax, dock, battle, marks, goal }) {
     // The next place to sail to, with an arrow that turns as the ship turns.
     $('goal').hidden = !goal || battle;
     if (goal) {
@@ -26,8 +30,17 @@ export class UI {
       $('goalDist').textContent = `${goal.dist} м`;
       $('goalArrow').style.transform = `rotate(${-goal.ang}rad)`;
     }
-    $('speed').textContent = `${Math.round(speed * 1.94)} узлов`;
-    $('dock').hidden = !canDock;
+    $('speed').textContent = `${SAILS[sailIndex(throttle)].name} · ${knots(speed)} уз.`;
+    // Mooring checklist: each line turns green once it is within the limit.
+    const near = !!dock && dock.dist < 45;
+    $('berth').hidden = !near;
+    if (near) {
+      const line = (id, ok, text) => { const el = $(id); el.textContent = text; el.className = ok ? 'ok' : ''; };
+      line('bDist', dock.ok.dist, `До места ${dock.dist.toFixed(1)} м (нужно < ${MOOR.dist})`);
+      line('bAng', dock.ok.ang, `Вдоль причала: ${Math.round(dock.ang * 180 / Math.PI)}° (нужно < ${Math.round(MOOR.ang * 180 / Math.PI)}°)`);
+      line('bSpeed', dock.ok.speed, `Скорость ${(dock.speed * 1.94).toFixed(1)} уз. (нужно < ${(MOOR.speed * 1.94).toFixed(1)})`);
+    }
+    $('dock').hidden = !(dock && dock.ready);
     for (const [side, id] of [['left', 'fireL'], ['right', 'fireR']]) {
       const b = $(id);
       b.classList.toggle('wait', reload[side] > 0);
@@ -46,17 +59,19 @@ export class UI {
         this.marks.set(m.label, el);
       }
       const x = Math.max(-1, Math.min(1, -m.ang / (Math.PI / 2)));
-      el.style.left = `${50 + x * 46}%`;
       el.classList.toggle('next', !!m.goal);
       el.innerHTML = `${m.icon} <span>${m.label}</span><small>${m.dist} м</small>`;
+      // Pinned to an edge, the whole label stays on the strip.
+      const W = this.compass.clientWidth, half = el.offsetWidth / 2 + 6;
+      el.style.left = `${Math.max(half, Math.min(W - half, (50 + x * 46) / 100 * W))}px`;
     }
     for (const [k, el] of this.marks) if (!seen.has(k)) { el.remove(); this.marks.delete(k); }
     // A mark that runs into the next-island mark keeps only its icon.
     const next = [...this.marks.values()].find(el => el.classList.contains('next'));
     const nr = next && next.getBoundingClientRect();
     for (const el of this.marks.values()) {
-      if (el === next) continue;
       el.classList.remove('quiet');
+      if (el === next) continue;
       if (!nr) continue;
       const r = el.getBoundingClientRect();
       el.classList.toggle('quiet', r.right > nr.left - 6 && r.left < nr.right + 6);
@@ -95,9 +110,18 @@ export class UI {
     this.bannerT = setTimeout(() => { b.hidden = true; }, ms);
   }
 
-  dialog({ title, text, gold, buttons, icon = 'treasure_chest' }) {
+  // who: a character id; their portrait replaces the icon once it is drawn (this.portrait is set by main.js).
+  dialog({ title, text, gold, buttons, icon = 'treasure_chest', who }) {
     const d = $('dialog');
-    d.querySelector('.dicon').src = `./textures/icons/icon_${icon}.png`;
+    const img = d.querySelector('.dicon');
+    img.src = `./textures/icons/icon_${icon}.png`;
+    img.classList.remove('face');
+    const ticket = this.dialogTicket = (this.dialogTicket || 0) + 1;
+    if (who && this.portrait) this.portrait(who).then(url => {
+      if (ticket !== this.dialogTicket) return;
+      img.src = url;
+      img.classList.add('face');
+    }, () => {});
     d.querySelector('h2').textContent = title;
     d.querySelector('p').textContent = text;
     d.querySelector('.haul').textContent = gold ? `+${gold} золота` : '';

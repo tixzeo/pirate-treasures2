@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Board, N, isSpecial, VALUE, COMPASS, BARREL, NAMES } from './board.js';
 import { buildPiece, SPECIAL_WORDS, SPECIAL_GLOW } from './pieces.js';
+import { kitReady, part } from '../kit.js';
 import { tween, wait, ease } from '../tween.js';
 import { Effects } from '../fx.js';
 import { pbr } from '../materials.js';
@@ -113,10 +114,12 @@ export class Match3 {
         const p = this.cellPos(r, c);
         m.position.set(p.x, p.y, -.4);
         m.receiveShadow = true;
+        m.userData.mats = [mat];
         this.boardGroup.add(m);
         this.cells[r].push(m);
       }
     }
+    kitReady.then(() => this.kitCells(), () => {});
 
     this.hitPlane = new THREE.Mesh(new THREE.PlaneGeometry(N, N), new THREE.MeshBasicMaterial({ visible: false }));
     this.boardGroup.add(this.hitPlane);
@@ -156,6 +159,31 @@ export class Match3 {
     })).then(() => { this.busy = false; });
     this.active = true;
     this.hud();
+  }
+
+  // Артем's board tile in place of the built-in cells, each with its own materials so it can light up on its own.
+  kitCells() {
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const old = this.cells[r][c];
+      const tile = part('tile_base');
+      const mats = [];
+      tile.traverse(o => {
+        if (!o.isMesh) return;
+        o.material = o.material.clone();
+        o.material.color.multiplyScalar((r + c) % 2 ? .66 : .78);
+        o.material.emissive.set('#000000');
+        mats.push(o.material);
+      });
+      tile.scale.setScalar(.49);
+      tile.rotation.x = Math.PI / 2;
+      const cell = new THREE.Group();
+      cell.add(tile);
+      cell.position.set(old.position.x, old.position.y, -.46);
+      cell.userData = { ...old.userData, mats, base: -.46 };
+      this.boardGroup.remove(old);
+      this.boardGroup.add(cell);
+      this.cells[r][c] = cell;
+    }
   }
 
   addMesh(id, t, r, c, yFrom) {
@@ -381,7 +409,7 @@ export class Match3 {
     } else this.idle = 0;
     const pulse = .5 + .5 * Math.sin(t * 6);
     for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-      const cell = this.cells[r][c], mat = cell.material;
+      const cell = this.cells[r][c];
       let glow = 0, color = '#ffd24a';
       if (this.sel) {
         const d = Math.abs(this.sel.r - r) + Math.abs(this.sel.c - c);
@@ -394,9 +422,8 @@ export class Match3 {
         cell.userData.flash = Math.max(0, cell.userData.flash - dt * 2.5);
         if (cell.userData.flash > glow) { glow = cell.userData.flash; color = cell.userData.flashColor; }
       }
-      mat.emissive.set(color);
-      mat.emissiveIntensity = glow;
-      cell.position.z = -.4 + glow * .08;
+      for (const mat of cell.userData.mats) { mat.emissive.set(color); mat.emissiveIntensity = glow; }
+      cell.position.z = (cell.userData.base ?? -.4) + glow * .08;
     }
     for (const m of this.meshes.values()) m.userData.inner.position.z = 0;
     if (hint) for (const h of hint) {

@@ -6,6 +6,8 @@ import { updateTweens } from './tween.js';
 import { sfx, setMuted, muted } from './sound.js';
 import { loadSave, writeSave, clearSave } from './save.js';
 import { setupGod, putSpecial } from './god.js';
+import { portrait } from './characters.js';
+import { SAILS, sailIndex } from './ship.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -15,6 +17,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const ui = new UI();
+ui.portrait = id => portrait(renderer, id);
+ui.portrait('captain').then(url => { $('introFace').src = url; }, () => {});
 const world = new World(renderer, ui);
 const match = new Match3(renderer, ui);
 let mode = 'intro';
@@ -34,6 +38,7 @@ world.onBossBeaten = persist;
 world.onBossGone = () => ui.dialog({
   title: 'Победа!',
   icon: 'crown',
+  who: 'tim_cabin_boy',
   text: 'Шрам уплывает на шлюпке, грозя кулаком. А из воды к вам карабкается мальчишка: «Я больше не служу Шраму! Возьмите меня юнгой, я знаю все его хитрости». Юнга Тим теперь в команде.',
   gold: 500,
   buttons: [['Йо-хо-хо!', () => ui.closeDialog()]],
@@ -54,12 +59,38 @@ const keys = new Set();
 addEventListener('keydown', e => {
   keys.add(e.code);
   if (mode !== 'sea' || ui.open) return;
+  // W/S set the sails one step at a time.
+  const step = (e.code === 'KeyW' || e.code === 'ArrowUp') ? 1 : (e.code === 'KeyS' || e.code === 'ArrowDown') ? -1 : 0;
+  if (step && !e.repeat) setSails(sailIndex(input.throttle) + step);
   if (e.code === 'KeyQ') world.fire('left');
   if (e.code === 'KeyE') world.fire('right');
   if ((e.code === 'Enter' || e.code === 'Space') && world.nearIsland()) land();
 });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
+
+function setSails(i) {
+  input.throttle = SAILS[THREE.MathUtils.clamp(i, 0, SAILS.length - 1)].v;
+  if (stickId === null) knob.style.transform = `translate(0, ${-input.throttle * 38}px)`;
+}
+
+// Dragging on the sea turns the view around the ship; the wheel zooms.
+let dragId = null, dragX = 0, dragY = 0;
+canvas.style.touchAction = 'none';
+canvas.addEventListener('pointerdown', e => {
+  if (mode !== 'sea' || dragId !== null) return;
+  dragId = e.pointerId; dragX = e.clientX; dragY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerId !== dragId) return;
+  world.orbit(e.clientX - dragX, e.clientY - dragY);
+  dragX = e.clientX; dragY = e.clientY;
+});
+const dragEnd = e => { if (e.pointerId === dragId) dragId = null; };
+canvas.addEventListener('pointerup', dragEnd);
+canvas.addEventListener('pointercancel', dragEnd);
+canvas.addEventListener('wheel', e => { if (mode === 'sea') { e.preventDefault(); world.zoom(e.deltaY); } }, { passive: false });
 
 const stick = $('stick'), knob = stick.querySelector('i');
 let stickId = null, stickX = 0;
@@ -69,19 +100,16 @@ function stickMove(e) {
   const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
   knob.style.transform = `translate(${x * 38}px, ${y * 38}px)`;
   stickX = x;
-  // Pushing up sets the sails; they stay set after the finger lifts.
-  input.throttle = THREE.MathUtils.clamp(-y * 1.15, -.3, 1);
+  // Pushing up sets the sails, snapping to the nearest setting; they stay set after the finger lifts.
+  input.throttle = SAILS[sailIndex(-y * 1.15)].v;
 }
 stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); stickMove(e); });
 stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) stickMove(e); });
-const stickUp = e => { if (e.pointerId !== stickId) return; stickId = null; stickX = 0; knob.style.transform = `translate(0, ${-input.throttle / 1.15 * 38}px)`; };
+const stickUp = e => { if (e.pointerId !== stickId) return; stickId = null; stickX = 0; knob.style.transform = `translate(0, ${-input.throttle * 38}px)`; };
 stick.addEventListener('pointerup', stickUp);
 stick.addEventListener('pointercancel', stickUp);
 
-function readKeys(dt) {
-  const up = keys.has('KeyW') || keys.has('ArrowUp'), down = keys.has('KeyS') || keys.has('ArrowDown');
-  if (up) input.throttle = Math.min(1, input.throttle + dt * .8);
-  if (down) input.throttle = Math.max(-.3, input.throttle - dt * .8);
+function readKeys() {
   const left = keys.has('KeyA') || keys.has('ArrowLeft'), right = keys.has('KeyD') || keys.has('ArrowRight');
   input.rudder = left ? 1 : right ? -1 : stickId !== null ? -stickX : 0;
 }
@@ -95,15 +123,18 @@ $('soundBtn').addEventListener('click', e => { setMuted(!muted); e.target.setAtt
 function land() {
   const isle = world.nearIsland();
   if (mode !== 'sea' || ui.open || !isle) return;
+  world.moor(isle);
   const def = isle.userData.def;
   const level = { ...def.level, name: def.name };
   mode = 'match';
-  world.player.throttle = input.throttle = 0;
+  setSails(1);
+  world.player.throttle = 0;
   world.player.speed = 0;
   ui.mode('match');
   const onEnd = ({ win, gold: g }) => {
     ui.dialog(win ? {
       title: 'Клад добыт!',
+      who: def.who,
       text: def.story,
       gold: g,
       buttons: [['На корабль', () => {
@@ -115,6 +146,7 @@ function land() {
     } : {
       title: 'Ходы кончились',
       icon: 'hook',
+      who: 'bosun',
       text: 'Клад так и не нашли, но кое-что команда всё же подобрала. Можно попробовать снова.',
       gold: g,
       buttons: [['Ещё раз', () => { ui.closeDialog(); addGold(g); match.start(level, onEnd); }],
@@ -134,10 +166,10 @@ $('go').addEventListener('click', () => {
   $('intro').hidden = true;
   mode = 'sea';
   ui.mode('sea');
-  input.throttle = .6;
+  setSails(3); // half sail to start
   sfx('win');
   const first = world.target();
-  if (first) ui.banner(`${save.done.length ? 'Цель' : 'Первая цель'}: ${first.name}`, 'Стрелка вверху показывает, куда плыть. Над островом горит столб света.', 4500, false);
+  if (first) ui.banner(`${save.done.length ? 'Цель' : 'Первая цель'}: ${first.name}`, 'Стрелка вверху показывает, куда плыть. Встаньте вдоль причала в золотой контур и сбавьте ход.', 4500, false);
 });
 ui.mode('intro');
 
@@ -151,7 +183,7 @@ renderer.setAnimationLoop(() => {
     match.update(dt, t);
     match.render();
   } else {
-    if (mode === 'sea' && !ui.open) readKeys(dt);
+    if (mode === 'sea' && !ui.open) readKeys();
     // Dialogs hold the helm but the sea keeps moving.
     world.update(dt, mode === 'sea' && !ui.open ? input : { throttle: world.player.throttle * .98, rudder: 0 });
     world.render();
@@ -169,7 +201,7 @@ setupGod({
     ui.closeDialog();
     if (mode === 'match') backToSea();
     world.resetProgress();
-    input.throttle = 0;
+    setSails(1);
     ui.banner('Прогресс сброшен', `Первая цель: ${world.target().name}`, 3000, false);
   },
   addGold,
@@ -177,7 +209,7 @@ setupGod({
     if (mode === 'match') backToSea();
     if (i === 'start') world.teleport(new THREE.Vector3(0, 0, -30), 30);
     else if (i === 'boss') world.teleport(world.boss.pos, 95);
-    else world.teleport(world.isles[i].position, world.isles[i].userData.radius + 16);
+    else world.teleportBerth(world.isles[i]);
   },
   toggleIsle(i) { const d = world.isles[i].userData; d.done = !d.done; persist(); },
   matchWin() {
@@ -196,12 +228,14 @@ setupGod({
     world.winBattle();
   },
   heal() { const p = world.player; p.hp = p.maxHp; p.sinking = 0; world.lost = false; world.ui.battleHud(world.state === 'battle' ? p : null, world.boss); },
+  atmo: () => world.atmo,
+  post: () => world.post,
   immortal: () => !!world.immortal,
   setImmortal(v) { world.immortal = v; },
   speed: () => speed,
   setSpeed(v) { speed = v; },
   state: () => ({
-    version: '0.2.0', mode, save: { ...save }, state: world.state,
+    version: '0.2.0', mode, gfx: { quality: world.post.quality, hour: +world.atmo.hour.toFixed(1), storm: +world.atmo.storm.toFixed(2) }, save: { ...save }, state: world.state,
     pos: world.player.pos.toArray().map(v => Math.round(v)), heading: +world.player.heading.toFixed(2),
     hp: world.player.hp, boss: { hp: world.boss.hp, sinking: +world.boss.sinking.toFixed(2), gone: !!world.bossGone },
     target: world.target() && world.target().name,
@@ -210,4 +244,4 @@ setupGod({
 });
 
 // Handy for checks from the console.
-window.game = { world, match, land, get mode() { return mode; } };
+window.game = { world, match, land, input, get mode() { return mode; } };
