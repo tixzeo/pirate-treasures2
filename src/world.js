@@ -10,7 +10,7 @@ import { Atmosphere } from './atmosphere.js';
 import { Post, pickQuality } from './post.js';
 import { character } from './characters.js';
 import { sfx } from './sound.js';
-import { BRIGANTINE, SHIP_RULES } from './ship-config.js';
+import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
@@ -36,8 +36,8 @@ export class World {
     this.post = new Post(renderer, this, pickQuality());
     this.fx = new Effects(this.scene);
 
-    // Player: the brigantine from part one's shipyard.
-    this.player = new Vessel(buildShip({ hull: 'polished_oak', trim: 'pirate_gold', sail: 'sail_canvas', flag: 'black_sailcloth', masts: 2, ...BRIGANTINE }), BRIGANTINE.handling);
+    // Player: the supplied «Морской странник», with TASK 001's vessel mechanics.
+    this.player = new Vessel(buildShip({ hull: 'polished_oak', trim: 'pirate_gold', sail: 'sail_canvas', flag: 'black_sailcloth', masts: 2, ...PLAYER_SHIP }), PLAYER_SHIP.handling);
     this.scene.add(this.player.mesh);
     this.reload = { left: 0, right: 0 };
 
@@ -122,7 +122,7 @@ export class World {
   }
 
   applyKit() {
-    dressShip(this.player.mesh, 'player_brigantine');
+    dressShip(this.player.mesh, PLAYER_SHIP.model);
     dressShip(this.boss.mesh, 'scar_karakatitsa');
     for (const isl of this.isles) {
       const { def, pier } = isl.userData;
@@ -164,7 +164,9 @@ export class World {
 
   board(ship, fig, x, z, castle = false, turn = 0) {
     const u = ship.mesh.userData;
-    fig.position.set(x, castle ? u.castle.y : u.deckY, castle ? u.castle.z : z * u.length / 2);
+    const anchor = u.navigation?.anchors?.[fig.userData.id];
+    if (anchor) fig.position.fromArray(anchor);
+    else fig.position.set(x, castle ? u.castle.y : u.deckY, castle ? u.castle.z : z * u.length / 2);
     fig.rotation.y = Math.PI + turn; // the bow is -Z, the figures face +Z
     ship.mesh.add(fig);
     return fig;

@@ -6,7 +6,14 @@ export const BRIGANTINE = Object.freeze({
   handling: Object.freeze({ hp: 100, maxSpeed: 14, turnRate: .9 }),
 });
 
-// Keep combat balance and mooring tolerances independent of the visual scale.
+// Native 22m review asset, uniformly fitted to the captain's chosen 32m brig.
+// Legacy BRIGANTINE remains available for TASK 001 regression checks.
+export const PLAYER_SHIP = Object.freeze({
+  model: 'morskoy_strannik_v2', length: 32, referenceLength: 14,
+  handling: BRIGANTINE.handling,
+});
+
+// Keep weapon tuning and mooring tolerances independent of the visual scale.
 export const SHIP_RULES = Object.freeze({
   berthGap: .6,
   pierGap: .1,

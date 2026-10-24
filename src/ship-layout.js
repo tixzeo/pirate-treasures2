@@ -33,7 +33,7 @@ export function captureShipParts(root) {
 }
 
 // All dimensions, surfaces, obstacles and gun centres use this same transform.
-// Y/Z retain proportions; X is fitted independently to the requested deck width.
+// Y/Z retain proportions; X is fitted independently only when deckWidth is supplied.
 export function fitShipLayout(parts, { length, deckWidth }) {
   const hull = boxOf(parts.hull), deck = parts.surfaces.find(s => s.kind === 'deck');
   if (hull.isEmpty() || !deck || !Number.isFinite(length) || !(length > 0) ||
@@ -53,5 +53,7 @@ export function fitShipLayout(parts, { length, deckWidth }) {
     hull: transform(parts.hull),
     surfaces: parts.surfaces.map(p => ({ ...p, bounds: transform(p.bounds) })),
     obstacles: parts.obstacles.map(p => ({ ...p, bounds: transform(p.bounds) })),
+    anchors: Object.fromEntries(Object.entries(parts.anchors || {}).map(([name, p]) =>
+      [name, [p[0] * scale.x, p[1] * s, p[2] * s + offsetZ]])),
   };
 }
