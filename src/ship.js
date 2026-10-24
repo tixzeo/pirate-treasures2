@@ -2,14 +2,16 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
+import { captureShipParts, fitShipLayout } from './ship-layout.js';
+import { shipMetrics, SHIP_RULES } from './ship-config.js';
 
 // Sailing ship built from code and dressed in the texture pack, so hulls and sails can be swapped like the skins in part one.
 // hull/sail/flag name a material from the pack; the *Tint colours shade it. The bow points to -Z in the ship's own space.
 export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 'pirate_gold', sail = 'sail_canvas', sailTint = '#ffffff',
-  flag = 'black_sailcloth', masts = 2, length = 14 } = {}) {
+  flag = 'black_sailcloth', masts = 2, length = 14, deckWidth, referenceLength = length } = {}) {
   const g = new THREE.Group();
   const wood = pbr('polished_oak', { repeat: [1, 3], color: '#b98d6a' });
-  const W = length * .32, H = length * .18;
+  const W = deckWidth === undefined ? length * .32 : deckWidth / .9, H = length * .18;
 
   // Hull: a pointed outline from above, extruded upward and narrowed toward the keel.
   const s = new THREE.Shape();
@@ -34,10 +36,12 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
   geo.computeVertexNormals();
   const hullMat = pbr(hull, { repeat: .25, color: hullTint });
   const hullMesh = new THREE.Mesh(geo, hullMat);
+  hullMesh.name = 'Fallback_CarvedHull';
   hullMesh.castShadow = true;
   g.add(hullMesh);
 
   const deck = new THREE.Mesh(new THREE.BoxGeometry(W * .9, .2, length * .82), pbr('deck_oak', { repeat: [1, 3] }));
+  deck.name = 'Fallback_Deck';
   deck.receiveShadow = true;
   deck.position.set(0, H * .5, length * .05);
   g.add(deck);
@@ -47,6 +51,7 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
   g.add(rail);
   // Stern castle.
   const castle = new THREE.Mesh(new THREE.BoxGeometry(W * .88, H * .55, length * .2), hullMat);
+  castle.name = 'Fallback_Quarterdeck';
   // Dark band along each side where the gun ports sit.
   for (const side of [-1, 1]) {
     const band = new THREE.Mesh(new THREE.BoxGeometry(.06, H * .28, length * .7), pbr('dark_leather', { repeat: [1, 3], color: '#6b4a3a' }));
@@ -68,10 +73,11 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
     const z = -L * .35 + i * (L * 1.1 / 3);
     for (const side of [-1, 1]) {
       const cn = new THREE.Mesh(cannonGeo, cannonMat);
+      cn.name = `Fallback_CannonBarrel_${side}_${i}`;
       cn.position.set(side * W * .5, H * .4, z);
       g.add(cn);
       const m = new THREE.Object3D();
-      m.position.set(side * (W * .5 + .6), H * .4, z);
+      m.position.set(side * (W * .5 + SHIP_RULES.muzzleGap), H * .4, z);
       g.add(m);
       g.userData.muzzles[side < 0 ? 'left' : 'right'].push(m);
     }
@@ -84,6 +90,7 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
     const z = masts === 1 ? -L * .15 : -L * .45 + i * (L * 1.0 / (masts - 1));
     const h = mastH * (i === masts - 1 && masts > 1 ? .85 : 1);
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(.14, .22, h, 8), wood);
+    mast.name = `Fallback_Mast_${i}`;
     mast.position.set(0, H * .5 + h / 2, z);
     mast.castShadow = true;
     g.add(mast);
@@ -138,8 +145,14 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
 
   g.userData.length = length;
   g.userData.width = W;
+  g.userData.deckWidth = deckWidth;
+  g.userData.referenceLength = referenceLength;
   g.userData.deckY = H * .5 + .1;
   g.userData.castle = { y: H * 1.055, z: L * .72 };
+  const parts = captureShipParts(g);
+  parts.obstacles.push({ name: 'Fallback_CaptainCabin', bounds: parts.surfaces.find(s => s.kind === 'quarterdeck').bounds });
+  g.userData.navigation = { space: 'ship-local', approximate: true, source: 'fallback', surfaces: parts.surfaces, obstacles: parts.obstacles };
+  g.userData.metrics = shipMetrics(g.userData);
   return g;
 }
 
@@ -147,10 +160,16 @@ export function buildShip({ hull = 'polished_oak', hullTint = '#ffffff', trim = 
 // deck heights, cannon muzzles and swaying sails and flags; the built-in shapes stay hidden as a fallback.
 export function dressShip(g, name) {
   const model = part(name);
-  const hull = boundsOf(model, n => /_CarvedHull$/.test(n));
-  const s = g.userData.length / (hull.max.z - hull.min.z), oz = -(hull.min.z + hull.max.z) / 2 * s;
-  const deck = boundsOf(model, n => /_Deck$/.test(n)), quarter = boundsOf(model, n => /_Quarterdeck$/.test(n));
   const u = g.userData;
+  const layout = fitShipLayout(model.userData.shipParts || captureShipParts(model), u);
+  const { scale, offsetZ: oz } = layout;
+  const deck = layout.surfaces.find(p => p.kind === 'deck').bounds;
+  const quarter = layout.surfaces.find(p => p.kind === 'quarterdeck')?.bounds || deck;
+  // Leave the helmsman in front of the cabin instead of inside its enlarged box.
+  const cabin = layout.obstacles.find(p => /_CaptainCabin$/.test(p.name))?.bounds;
+  let helmZ = (quarter.min[2] + quarter.max[2]) / 2;
+  if (cabin && helmZ > cabin.min[2] - .4 && helmZ < cabin.max[2] + .4)
+    helmZ = Math.max(quarter.min[2] + .35, cabin.min[2] - .4);
   // Muzzles are named <Ship>_CannonMuzzle_<side>_<z>; side 1 is starboard (+X). Shots start a little outboard.
   const muzzles = { left: [], right: [] };
   model.traverse(o => {
@@ -158,7 +177,7 @@ export function dressShip(g, name) {
     if (!m) return;
     const c = boundsOf(model, n => n === o.name).getCenter(new THREE.Vector3());
     const at = new THREE.Object3D();
-    at.position.set(c.x * s + Math.sign(c.x) * .6, c.y * s, c.z * s + oz);
+    at.position.set(c.x * scale.x + Math.sign(c.x) * SHIP_RULES.muzzleGap, c.y * scale.y, c.z * scale.z + oz);
     g.add(at);
     muzzles[m[1] === '1' ? 'right' : 'left'].push(at);
   });
@@ -171,16 +190,18 @@ export function dressShip(g, name) {
     model.getObjectsByProperty('isMesh', true).filter(o => o.name.includes(`_SailSeam_${key[1]}_`)).forEach(seam => sail.attach(seam));
   }
   sway.forEach((o, i) => { o.userData.rest = o.rotation.clone(); o.userData.phase = i * .7; o.userData.flag = /_Flag_/.test(o.name); });
-  model.scale.setScalar(s);
+  model.scale.set(scale.x, scale.y, scale.z);
   model.position.z = oz;
   for (const c of g.children) if (c.isMesh) c.visible = false;
   g.add(model);
   Object.assign(u, {
     model, sway, muzzles: muzzles.left.length ? muzzles : u.muzzles, sails: [], flag: null,
-    width: (hull.max.x - hull.min.x) * s,
-    deckY: deck.max.y * s,
-    castle: { y: quarter.max.y * s, z: (quarter.min.z + quarter.max.z) / 2 * s + oz },
+    width: layout.hull.max[0] - layout.hull.min[0],
+    deckY: deck.max[1],
+    castle: { y: quarter.max[1], z: helmZ },
+    navigation: { ...layout, source: name },
   });
+  u.metrics = shipMetrics(u);
 }
 
 // Sail settings, from going astern to full sail: a share of top speed and a name for the HUD.

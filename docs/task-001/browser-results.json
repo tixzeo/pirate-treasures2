@@ -1,0 +1,280 @@
+{
+  "results": [
+    {
+      "name": "22m hull, 4.4m deck",
+      "pass": true,
+      "detail": {
+        "length": 22,
+        "width": 5.331124341792975,
+        "deck": {
+          "min": [
+            -2.2,
+            1.6718314466821478,
+            -9.789999580383302
+          ],
+          "max": [
+            2.2,
+            1.9801684798849302,
+            9.789999580383302
+          ]
+        }
+      }
+    },
+    {
+      "name": "crew unscaled",
+      "pass": true,
+      "detail": [
+        0,
+        2.5080423012767383,
+        7.574962979432526
+      ]
+    },
+    {
+      "name": "captain in front of cabin",
+      "pass": true,
+      "detail": [
+        0,
+        2.5080423012767383,
+        7.574962979432526
+      ]
+    },
+    {
+      "name": "four guns left",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "gun outside hull left",
+      "pass": true,
+      "detail": [
+        -3.7327048209516964,
+        1.6279999554157258,
+        -5.279999947547913
+      ]
+    },
+    {
+      "name": "gun outside hull left",
+      "pass": true,
+      "detail": [
+        -3.7327048209516964,
+        1.6279999554157258,
+        -2.4199999213218693
+      ]
+    },
+    {
+      "name": "gun outside hull left",
+      "pass": true,
+      "detail": [
+        -3.7327048209516964,
+        1.6279999554157258,
+        0.7699999868869782
+      ]
+    },
+    {
+      "name": "gun outside hull left",
+      "pass": true,
+      "detail": [
+        -3.7327048209516964,
+        1.6279999554157258,
+        3.8500000000000005
+      ]
+    },
+    {
+      "name": "four guns right",
+      "pass": true,
+      "detail": 4
+    },
+    {
+      "name": "gun outside hull right",
+      "pass": true,
+      "detail": [
+        3.7327048209516964,
+        1.6279999554157258,
+        -5.279999947547913
+      ]
+    },
+    {
+      "name": "gun outside hull right",
+      "pass": true,
+      "detail": [
+        3.7327048209516964,
+        1.6279999554157258,
+        -2.4199999213218693
+      ]
+    },
+    {
+      "name": "gun outside hull right",
+      "pass": true,
+      "detail": [
+        3.7327048209516964,
+        1.6279999554157258,
+        0.7699999868869782
+      ]
+    },
+    {
+      "name": "gun outside hull right",
+      "pass": true,
+      "detail": [
+        3.7327048209516964,
+        1.6279999554157258,
+        3.8500000000000005
+      ]
+    },
+    {
+      "name": "berth Остров Креста",
+      "pass": true,
+      "detail": {
+        "dist": 0,
+        "dock": true
+      }
+    },
+    {
+      "name": "berth Остров Креста reverse",
+      "pass": true,
+      "detail": {
+        "dist": 0,
+        "dock": true
+      }
+    },
+    {
+      "name": "berth Бухта Попугая",
+      "pass": true,
+      "detail": {
+        "dist": 0,
+        "dock": true
+      }
+    },
+    {
+      "name": "berth Бухта Попугая reverse",
+      "pass": true,
+      "detail": {
+        "dist": 0,
+        "dock": true
+      }
+    },
+    {
+      "name": "berth Остров Черепа",
+      "pass": true,
+      "detail": {
+        "dist": 0,
+        "dock": true
+      }
+    },
+    {
+      "name": "berth Остров Черепа reverse",
+      "pass": true,
+      "detail": {
+        "dist": 0,
+        "dock": true
+      }
+    },
+    {
+      "name": "coast 30,-190",
+      "pass": true,
+      "detail": 8.881784197001252e-16
+    },
+    {
+      "name": "coast -150,-360",
+      "pass": true,
+      "detail": 8.881784197001252e-16
+    },
+    {
+      "name": "coast 110,-520",
+      "pass": true,
+      "detail": 7.993605777301127e-15
+    },
+    {
+      "name": "coast -160,-110",
+      "pass": true,
+      "detail": -6.217248937900877e-15
+    },
+    {
+      "name": "coast 200,-260",
+      "pass": true,
+      "detail": -6.217248937900877e-15
+    },
+    {
+      "name": "coast -90,150",
+      "pass": true,
+      "detail": -2.6645352591003757e-15
+    },
+    {
+      "name": "coast 140,110",
+      "pass": true,
+      "detail": -6.217248937900877e-15
+    },
+    {
+      "name": "coast -300,-520",
+      "pass": true,
+      "detail": 2.930988785010413e-14
+    },
+    {
+      "name": "coast -40,-620",
+      "pass": true,
+      "detail": 2.220446049250313e-14
+    },
+    {
+      "name": "pier Остров Креста",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "pier Бухта Попугая",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "pier Остров Черепа",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "eight broadside shots",
+      "pass": true,
+      "detail": 8
+    },
+    {
+      "name": "hit in scaled hull",
+      "pass": true
+    },
+    {
+      "name": "miss above hull",
+      "pass": true
+    },
+    {
+      "name": "player damage",
+      "pass": true,
+      "detail": 95
+    },
+    {
+      "name": "battle active and camera finite",
+      "pass": true,
+      "detail": [
+        343.38791889905974,
+        23.62557220559189,
+        -315.15685699755613
+      ]
+    },
+    {
+      "name": "boss damage",
+      "pass": true,
+      "detail": 144
+    },
+    {
+      "name": "landing starts match",
+      "pass": true,
+      "detail": "match"
+    },
+    {
+      "name": "return to sea",
+      "pass": true,
+      "detail": "sea"
+    }
+  ],
+  "stats": {
+    "calls": 460,
+    "triangles": 239802,
+    "geometries": 849,
+    "textures": 292
+  }
+}
