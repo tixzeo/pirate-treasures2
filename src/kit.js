@@ -8,6 +8,7 @@ import { PLAYER_SHIP } from './ship-config.js';
 import { prepareMorskoy } from './morskoy.js';
 import { ISLAND_V3, isIslandV3, prepareIslandV3 } from './island-v3.js';
 import { prepareWaterModel } from './water-models.js';
+import { withIslandTerrain } from './island-materials.js';
 export { boundsOf } from './ship-layout.js';
 
 // Артем's World Kit (public/models/kit): ships, islands, docks, props and match-3 pieces.
@@ -80,7 +81,9 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     o.material.envMapIntensity = .45; // the board's room reflections otherwise wash flat tops out to white
     if (/Sail|Flag|Wing|Fin|Canvas/.test(o.name)) o.material.side = THREE.DoubleSide;
     // Wood grain, sailcloth, sand and stone from the texture pack; the match-3 pieces stay clean.
-    const kind = !islandV3 && !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
+    if (islandV3 && o.material.name === 'island_v3_ground') o.material = withIslandTerrain(o.material);
+    const kind = islandV3 ? (o.material.name === 'island_v3_wood' && {tex:'weathered_hull',scale:.5,color:.65,normal:.3}) :
+      !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
     if (kind) o.material = withDetail(o.material, kind);
   });
   // Static parts welded per material; what the game looks up by name or animates stays separate.
