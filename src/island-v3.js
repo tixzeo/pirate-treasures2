@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { boundsOf } from './ship-layout.js';
 import { flatten, mergeStatic } from './merge.js';
 import { makeIslandShape, shoreDistance } from './island-shape.js';
+import { groundProbe, groundedAnchor } from './island-ground.js';
 
 export const ISLAND_V3 = ['island_cove_small', 'island_lagoon', 'island_volcanic', 'island_crescent_bay', 'island_jungle_ruins', 'island_fortress_rock'];
 export const isIslandV3 = name => ISLAND_V3.includes(name);
@@ -37,7 +38,7 @@ export function prepareIslandV3(root) {
     if (!o.isMesh) return;
     const n = o.name;
     const type = /_lava_(?:lake|core|fissure)/.test(n) ? 'lava' : /spring$|inner_pool$|inner_lagoon$|cenote$|waterfall_strip/.test(n) ? 'water' :
-      /frond|crown|grass_|fern_|reeds_|flag$/.test(n) ? 'foliage' : /pier|hut|barrel|table|fence|plank/.test(n) ? 'wood' : 'ground';
+      /frond|crown|grass_|fern_|reeds_|flag$/.test(n) ? 'foliage' : /pier|hut|barrel|table|fence|plank|trunk/.test(n) ? 'wood' : 'ground';
     if (!materials.has(type)) {
       const mat = o.material.clone(); mat.name = `island_v3_${type}`;
       mat.metalness = 0; mat.roughness = type === 'water' ? .3 : .9;
@@ -62,10 +63,8 @@ function propKey(name) {
   return null;
 }
 
-// Ground footprint retains the game's established island sizes. Palms, huts and
-// landmarks keep their authored proportions at a smaller prop scale; no old random
-// foliage is scattered over the new artwork. Lift the asset 35 cm, as for the
-// legacy islands, so its low beaches do not sit exactly on the sea plane.
+// Terrain and props have separate scale. Every prop is planted on the fitted
+// physical terrain, rather than stretching its old Y coordinate with the hills.
 export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
   const native = boundsOf(src, n => TERRAIN.test(n));
   if (native.isEmpty()) throw new Error('V3 island is missing terrain');
@@ -86,7 +85,10 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
     if (/inner_lagoon$/.test(o.name)) { geo.dispose(); return; }
     model.add(m); if (TERRAIN.test(o.name)) ground.push(m);
   });
-  for (const list of props.values()) {
+  const cone = ground.find(m => /crater_cone$/.test(m.name));
+  const volcanoFoot = cone && settleVolcanoBase(cone, ground.filter(m=>m!==cone));
+  const probe = groundProbe(ground), planted = [];
+  for (const [name, list] of props) {
     const box = new THREE.Box3();
     for (const m of list) { m.geometry.computeBoundingBox(); box.union(m.geometry.boundingBox); }
     const at = new THREE.Vector3(), v = new THREE.Vector3(); let count = 0;
@@ -95,14 +97,18 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
       for (let i = 0; i < p.count; i++) if (v.fromBufferAttribute(p, i).y < box.min.y + .1) { at.add(v); count++; }
     }
     at.divideScalar(count); at.y = box.min.y;
+    let hit;
+    try { hit = groundedAnchor(probe, (at.x - centre.x) * scale, (at.z - centre.z) * scale, /rock|boulder/.test(name) ? -10 : .2, Math.max(16,shore*.5)); }
+    catch (error) { throw Error(`${name}: ${error.message}`); }
+    const y = hit.y - .06;
     for (const m of list) {
       m.geometry.translate(-at.x, -at.y, -at.z).scale(propScale, propScale, propScale);
-      m.position.set((at.x - centre.x) * scale, at.y * vertical + .35, (at.z - centre.z) * scale); model.add(m);
+      m.position.set(hit.x, y, hit.z); model.add(m);
     }
+    planted.push({ name, position: [hit.x, y, hit.z], groundY: hit.y });
   }
-  const cone = ground.find(m => /crater_cone$/.test(m.name));
-  const volcanoFoot = cone && settleVolcanoBase(cone, ground.filter(m=>m!==cone));
   const terrain = makeIslandShape(ground);
+  terrain.props = planted;
   if(volcanoFoot)terrain.volcanoFoot=volcanoFoot;
   const ponds = [];
   for (const basin of terrain.basins) {

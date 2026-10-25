@@ -42,6 +42,27 @@ test('crescent lagoon remains water and has an open route to the outer sea', () 
   assert.equal(terrainPush({ x: 0, z: 0 }, s.yaw, { radius: .6, reach: 1 }, isle), null);
 });
 
+test('native palms and landmarks are grounded on actual fitted terrain, including enlarged islands', async () => {
+  for (const [name, fit] of islands) {
+    const inspect = value => {
+      value.wrap.updateMatrixWorld(true);
+      const ground=value.wrap.getObjectsByProperty('isMesh',true).filter(m=>m.material.name==='island_v3_ground');
+      assert.ok(value.terrain.props.length>0,name);
+      for (const prop of value.terrain.props) {
+        const p=new THREE.Vector3(...prop.position).applyAxisAngle(new THREE.Vector3(0,1,0),value.terrain.yaw);
+        const ray=new THREE.Raycaster(new THREE.Vector3(p.x,p.y+.08,p.z),new THREE.Vector3(0,-1,0));
+        const hit=ray.intersectObjects(ground).find(h=>Math.abs(h.point.y-prop.groundY)<.002);
+        assert.ok(hit&&Math.abs(hit.point.y-prop.groundY)<.002,`${name}: ${prop.name} ground probe`);
+        assert.ok(Math.abs(hit.point.y-p.y-.06)<.002,`${prop.name} root is buried 6cm`);
+      }
+    };
+    inspect(fit);
+    const b=await readFile(new URL(`../public/models/islands/${name}.glb`,import.meta.url));
+    const {scene}=await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
+    prepareIslandV3(scene);inspect(fitIslandV3(scene,165,null,1,7.5));
+  }
+});
+
 test('terrain collision resolves land penetration after rotation for each island', () => {
   for (const [name, fit] of islands) {
     const s = fit.terrain, i = s.field.indexOf(Math.min(...s.field));
