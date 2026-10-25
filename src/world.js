@@ -1,3 +1,4 @@
+import { planBerth } from './berth-layout.js';
 import * as THREE from 'three';
 import { Sea, addSky, addClouds, waveHeight } from './sea.js';
 import { buildShip, dressShip, Vessel } from './ship.js';
@@ -15,7 +16,6 @@ import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
 import { DeckWalker, makeDeckZone } from './deck-walk.js';
 import { DeckCamera } from './deck-camera.js';
-import { planBerth } from './berth-layout.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s

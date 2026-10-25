@@ -1,0 +1,62 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Sea and islands checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}nav{position:fixed;left:8px;bottom:8px;display:flex;gap:6px}button{padding:10px;color:white;background:#163642;border:1px solid #ccc;border-radius:6px}pre{position:fixed;top:0;left:0;color:white;background:#10202ddd;pointer-events:none;font:12px monospace;max-width:95%;white-space:pre-wrap}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><nav><button data-view="pond">Пруд</button><button data-view="island">Остров</button><button data-view="volcano">Вулкан</button><button data-view="barrels">Бочки</button></nav><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const g=w.game,{world,input}=g;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js'),{terrainPush,shoreDistance}=await import('/src/island-shape.js'),{pierPush}=await import('/src/ship-collision.js'),{waveHeight}=await import('/src/sea.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);input.throttle=0;
+world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
+for(let i=0;i<600;i++)world.atmo.update(1/60,world.camera);
+const all=[...world.isles,...world.scenery];ok('six distinct island assets',new Set(all.map(i=>i.userData.kit)).size===6);
+ok('coast texture has adequate resolution',world.sea.uniforms.uCoastAtlas.value.image.width===2048&&world.sea.uniforms.uCoastAtlas.value.image.height===256);
+for(const isle of world.isles){
+ const berth=isle.userData.pier,u=world.player.mesh.userData;
+ for(const flip of [0,Math.PI]){
+  const heading=berth.heading+flip;
+  ok(isle.userData.def.name+' coast-clear berth '+flip,!terrainPush(berth.berth,heading,u.metrics.coast,isle));
+  ok(isle.userData.def.name+' pier-clear berth '+flip,!pierPush(berth.berth,heading,u,berth,berth.length,4.8));
+ }
+ const along=berth.berth.clone().sub(berth.root).dot(berth.dir);
+ ok(isle.userData.def.name+' berth remains alongside pier',along>=u.length/2&&along+u.length/2<=berth.length+.01,{along,pier:berth.length,hull:u.length});
+}
+for(const isle of [world.isles[0],world.isles[1],world.scenery[1]]){
+ const s=isle.userData.terrain;
+ ok(isle.userData.kit+' has closed inland water',s.ponds.length>0);
+ ok(isle.userData.kit+' entire basin masks the ocean',s.closedWater.every((v,i)=>!v||s.oceanField[i]<0));
+}
+const bay=world.scenery[0].userData.terrain;ok('crescent bay stays open',shoreDistance({...bay,field:bay.oceanField},0,0)>10);
+ok('volcano foot is supported',world.isles[2].userData.terrain.volcanoFoot.samples.every(p=>Math.abs(p.after-p.ground)<.031));
+const waterAt=new T.Vector3(2000,0,2000),barrels=['barrel_intact','barrel_damaged'].map((kind,i)=>world.life.piece(kind,waterAt.clone().add(new T.Vector3(i*1.4,0,0)),Infinity));
+for(const b of barrels){b.m.position.y=waveHeight(b.m.position.x,b.m.position.z,0)-b.draft;const shell=b.m.getObjectByName('Barrel_Stave_Body');ok('barrel shell opaque '+b.m.name,shell.material.opacity===1&&!shell.material.transparent);}
+const metrics={};let current='pond';
+function view(name){
+ current=name;
+ const camera=world.camera;
+ if(name==='barrels'){
+  world.player.pos.copy(waterAt).add(new T.Vector3(20,0,0));world.sea.update(0,world.player.pos);
+  camera.position.copy(waterAt).add(new T.Vector3(2.5,1.7,3));camera.lookAt(waterAt.clone().add(new T.Vector3(.6,.1,0)));
+ }else{
+  const isle=name==='volcano'?world.isles[2]:world.isles[0],s=isle.userData.terrain;
+  world.player.pos.copy(isle.userData.pier.berth);world.player.heading=isle.userData.pier.heading;world.player.mesh.rotation.set(0,world.player.heading,0);
+  world.sea.update(0,world.player.pos);
+  if(name==='pond'){
+   const p=new T.Vector3(...s.ponds[0].center).applyAxisAngle(new T.Vector3(0,1,0),s.yaw).add(isle.position);
+   camera.position.copy(p).add(new T.Vector3(24,35,30));camera.lookAt(p);
+  }else if(name==='volcano'){
+   camera.position.copy(isle.position).add(new T.Vector3(155,12,180));camera.lookAt(isle.position.clone().add(new T.Vector3(0,19,0)));
+  }else{
+   camera.position.copy(isle.position).add(new T.Vector3(180,220,210));camera.lookAt(isle.position);
+  }
+ }
+ camera.updateMatrixWorld(true);world.renderer.info.autoReset=false;world.renderer.info.reset();world.render();
+ if(world.renderer.info.programs.some(p=>p.diagnostics?.runnable===false))throw Error('A scene shader failed to compile');
+ metrics[name]={...world.renderer.info.render,geometries:world.renderer.info.memory.geometries,textures:world.renderer.info.memory.textures};
+ out.textContent='PASS '+results.length+' environment checks · '+name+' · '+JSON.stringify(metrics[name]);
+ document.body.dataset.result=JSON.stringify({results,metrics});
+}
+for(const b of document.querySelectorAll('nav button'))b.onclick=()=>view(b.dataset.view);
+w.addEventListener('resize',()=>requestAnimationFrame(()=>view(current)));
+view(new URLSearchParams(location.search).get('view')||'pond');
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>
