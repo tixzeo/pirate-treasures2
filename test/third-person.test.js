@@ -1,12 +1,34 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { DeckCamera, cameraRelativeMove } from '../src/deck-camera.js';
+import { DeckCamera, CrewOcclusion, cameraRelativeMove } from '../src/deck-camera.js';
 import { DeckWalker, makeDeckZone, deckClear } from '../src/deck-walk.js';
 
 const near = (a,b) => assert.ok(Math.abs(a-b)<1e-6,`${a} != ${b}`);
 const nav = {surfaces:[],obstacles:[]};
 const actor = () => ({position:{x:0,y:2,z:0}});
+
+test('deck view survives leaving and entering with a fresh target', () => {
+  const first = new DeckCamera(); first.orbit(170, -25); first.zoom(180);
+  const second = new DeckCamera(first.view());
+  second.update(1/60, new THREE.PerspectiveCamera(), new THREE.Group(), { position: { x: 2, y: 3, z: -4 } }, nav);
+  assert.deepEqual(second.view(), first.view());
+  assert.deepEqual(second.focus.toArray(), [2, 4.1, -4]);
+  near(second.azimuth, first.yaw);
+});
+
+test('foreground crew fades without changing shared materials, and restores on exit', () => {
+  const shared = new THREE.MeshStandardMaterial(), figure = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1.7, 1), shared); figure.add(mesh);
+  const occlusion = new CrewOcclusion([{ figure, bounds: { min: [-.5, 2, 1], max: [.5, 3.7, 2] } }]);
+  occlusion.update(new THREE.Vector3(0, 3.2, 4), actor().position);
+  assert.notEqual(mesh.material, shared); assert.equal(shared.opacity, 1);
+  assert.equal(mesh.material.opacity, .18); assert.equal(mesh.material.depthWrite, false);
+  occlusion.update(new THREE.Vector3(4, 3.2, 0), actor().position);
+  assert.equal(mesh.material.opacity, 1); assert.equal(mesh.material.transparent, false);
+  assert.equal(mesh.material.depthWrite, true);
+  occlusion.restore(); assert.equal(mesh.material, shared);
+});
 
 test('screen controls follow the view at four headings and preserve analogue magnitude',()=>{
   for(const [yaw,x,z] of [[0,0,-1],[Math.PI/2,-1,0],[Math.PI,0,1],[-Math.PI/2,1,0]]){
@@ -44,13 +66,4 @@ test('camera-relative movement still respects the same collision zone',()=>{
   const walker=new DeckWalker(makeDeckZone(navigation),{x:0,z:0}),rig=new DeckCamera(),ship=new THREE.Group(),camera=new THREE.PerspectiveCamera();rig.yaw=Math.PI/2;
   for(let i=0;i<120;i++){rig.update(1/60,camera,ship,walker,navigation);const move=rig.movement(0,-1);walker.update(1/60,move.x,move.z);}
   assert.ok(walker.position.x<-.8&&walker.position.x>=-1.08-1e-6);assert.ok(deckClear(walker.zone,walker.position.x,walker.position.z));
-});
-
-test('deck view survives leaving and entering with a fresh target', () => {
-  const first = new DeckCamera(); first.orbit(170, -25); first.zoom(180);
-  const second = new DeckCamera(first.view());
-  second.update(1/60, new THREE.PerspectiveCamera(), new THREE.Group(), { position: { x: 2, y: 3, z: -4 } }, nav);
-  assert.deepEqual(second.view(), first.view());
-  assert.deepEqual(second.focus.toArray(), [2, 4.1, -4]);
-  near(second.azimuth, first.yaw);
 });

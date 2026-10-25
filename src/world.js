@@ -14,7 +14,8 @@ import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
 import { DeckWalker, makeDeckZone } from './deck-walk.js';
-import { DeckCamera } from './deck-camera.js';
+import { DeckCamera, CrewOcclusion } from './deck-camera.js';
+import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
@@ -229,11 +230,17 @@ export class World {
       if (!walker.position) return false;
       this.walkNavigation = navigation; this.deckWalker = walker;
       this.deckCamera = new DeckCamera(this.deckView);
+      this.crewOcclusion = new CrewOcclusion(Object.values(this.crew)
+        .filter(c => c !== this.crew.captain && c.visible && c.parent === this.player.mesh).map(figure => {
+          const box = boundsOf(figure, () => true); figure.updateMatrix(); box.applyMatrix4(figure.matrix);
+          return { figure, bounds: { min: box.min.toArray(), max: box.max.toArray() } };
+        }));
       this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
       this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
       this.crew.captain.rotation.y = walker.facing;
     } else if (mode === 'helm') {
       this.deckView = this.deckCamera?.view();
+      this.crewOcclusion?.restore(); this.crewOcclusion = null;
       this.lastDeckPosition = this.deckWalker?.position && { ...this.deckWalker.position };
       if (this.crew.captain) this.board(this.player, this.crew.captain, 0, 0, true);
       this.captainMotion(false);
@@ -548,6 +555,7 @@ export class World {
   updateCamera(dt) {
     if (this.seaControlMode === 'deck') {
       this.deckCamera.update(dt, this.camera, this.player.mesh, this.deckWalker, this.walkNavigation);
+      this.crewOcclusion?.update(this.deckCamera.eye, this.deckWalker.position);
       return;
     }
     const p = this.player, f = p.forward(), cam = p.mesh.userData.metrics.camera;

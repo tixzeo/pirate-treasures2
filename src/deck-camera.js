@@ -49,11 +49,47 @@ export class DeckCamera {
     for (const s of navigation.surfaces) if (s.kind === 'quarterdeck' || s.kind === 'step') boxes.push(s.bounds);
     const fraction = cameraLimit(target.toArray(), this.local.toArray(), boxes);
     const safe = target.clone().lerp(this.local, fraction);
+    this.eye = safe.clone();
     // Use the view actually displayed, including follow/orbit smoothing. A fast
     // swipe must not change walking direction before the camera has turned.
     this.lookYaw = Math.atan2(safe.x - target.x, safe.z - target.z);
     camera.up.set(0, 1, 0);
     camera.position.copy(ship.localToWorld(safe));
     camera.lookAt(ship.localToWorld(target));
+  }
+}
+
+// Fade only the crew between the camera and the captain. Per-entry clones keep
+// shared character/portrait materials intact; restore and dispose them at exit.
+export class CrewOcclusion {
+  constructor(figures) { this.figures = figures.map(({ figure, bounds }) => ({ figure, bounds, meshes: [], materials: new Map() })); }
+  update(eye, position) {
+    const to = eye.toArray();
+    for (const entry of this.figures) {
+      const blocked = entry.figure.visible && [.2, .9, 1.65].some(y => cameraLimit([position.x, position.y + y, position.z], to, [entry.bounds]) < 1);
+      if (blocked && !entry.meshes.length) entry.figure.traverse(mesh => {
+        if (!mesh.isMesh) return;
+        const original = mesh.material;
+        const clone = material => {
+          if (!entry.materials.has(material)) entry.materials.set(material, material.clone());
+          return entry.materials.get(material);
+        };
+        mesh.material = Array.isArray(original) ? original.map(clone) : clone(original);
+        entry.meshes.push({ mesh, original });
+      });
+      for (const [original, material] of entry.materials) {
+        const transparent = blocked || original.transparent;
+        if (material.transparent !== transparent) { material.transparent = transparent; material.needsUpdate = true; }
+        material.opacity = blocked ? original.opacity * .18 : original.opacity;
+        material.depthWrite = blocked ? false : original.depthWrite;
+      }
+    }
+  }
+  restore() {
+    for (const entry of this.figures) {
+      for (const { mesh, original } of entry.meshes) mesh.material = original;
+      for (const material of entry.materials.values()) material.dispose();
+      entry.meshes = []; entry.materials.clear();
+    }
   }
 }
