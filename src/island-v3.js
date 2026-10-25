@@ -40,7 +40,7 @@ export function prepareIslandV3(root) {
     if (!o.isMesh) return;
     const n = o.name;
     const type = /_lava_(?:lake|core|fissure)/.test(n) ? 'lava' : /spring$|inner_pool$|inner_lagoon$|cenote$|waterfall_strip/.test(n) ? 'water' :
-      /frond|crown|grass_|fern_|reeds_|flag$/.test(n) ? 'foliage' : /pier|hut|barrel|table|fence|plank|trunk/.test(n) ? 'wood' : 'ground';
+      /frond|crown|grass_|fern_|reeds_|flag$|pennant/.test(n) ? 'foliage' : /pier|hut|barrel|table|fence|plank|trunk|branch|mast/.test(n) ? 'wood' : 'ground';
     if (!materials.has(type)) {
       const mat = o.material.clone(); mat.name = `island_v3_${type}`;
       mat.metalness = 0; mat.roughness = type === 'water' ? .3 : .9;
@@ -60,6 +60,14 @@ export function prepareIslandV3(root) {
 function propKey(name) {
   const direct = /^(.*_palm_\d+)_|^(.*_(?:fishers?_hut|stilt_hut_[ab]|guard_hut))_|^(.*_(?:supply|cargo)_barrel_[ab])(?:_|$)|^(.*_(?:beach_rock|cove_rock|basalt_boulder|boulder)_\d+)$/.exec(name);
   if (direct) return direct.slice(1).find(Boolean);
+  const plant=/^(.*_(?:dune_grass|grass|fern|reeds|ash_tuft)_\d+)_\d+$/.exec(name);
+  if(plant)return plant[1];
+  const tree=/^(.*)_dead_tree_(?:trunk|branch)_(\d+)(?:_|$)/.exec(name);
+  if(tree)return `${tree[1]}_dead_tree_${tree[2]}`;
+  const small=/^(.*)_(map_table|table_leg_.+|campfire_stone|fire_rock_\d+|fencepost_\d+|fencerope_\d+|signal_mast|signal_pennant)$/.exec(name);
+  if(small)return `${small[1]}_${/table/.test(small[2])?'MapTable':/fire/.test(small[2])?'Campfire':/fence/.test(small[2])?'Fence':'Signal'}`;
+  const supplies=/^(.*_(?:supply|cargo)_[ab])(?:_|$)/.exec(name);
+  if(supplies)return supplies[1];
   if (/^Jungle_ruins_(?:temple|capital|intact_lintel|fallen_lintel|marker)/.test(name)) return 'JungleTemple';
   if (/^Fortress_rock_(?:keep|merlon|wall|battery|arrow_slit|flagpole|red_flag)/.test(name)) return 'FortressKeep';
   return null;
@@ -99,15 +107,18 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5, library 
       for (let i = 0; i < p.count; i++) if (v.fromBufferAttribute(p, i).y < box.min.y + .1) { at.add(v); count++; }
     }
     at.divideScalar(count); at.y = box.min.y;
+    const maxHeight=/_MapTable$/.test(name)?1.05:/_Fence$/.test(name)?1.4:/_(?:supply|cargo)(?:_barrel)?_[ab]$/.test(name)?1.15:Infinity;
+    const itemScale=Math.min(propScale,maxHeight/(box.max.y-box.min.y));
     let hit;
     try { hit = groundedAnchor(probe, (at.x - centre.x) * scale, (at.z - centre.z) * scale, /rock|boulder/.test(name) ? -10 : .2, Math.max(16,shore*.5)); }
     catch (error) { throw Error(`${name}: ${error.message}`); }
     const y = hit.y - .06;
     for (const m of list) {
-      m.geometry.translate(-at.x, -at.y, -at.z).scale(propScale, propScale, propScale);
+      m.geometry.translate(-at.x, -at.y, -at.z).scale(itemScale, itemScale, itemScale);
       m.position.set(hit.x, y, hit.z); model.add(m);
     }
-    planted.push({ name, position: [hit.x, y, hit.z], groundY: hit.y });
+    planted.push({ name, position: [hit.x, y, hit.z], groundY: hit.y, scale:itemScale,
+      size:box.getSize(new THREE.Vector3()).multiplyScalar(itemScale).toArray() });
   }
   const terrain = makeIslandShape(ground);
   terrain.props = planted;

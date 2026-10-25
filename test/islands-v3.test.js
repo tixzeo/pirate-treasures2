@@ -66,6 +66,19 @@ test('native palms and landmarks are grounded on actual fitted terrain, includin
   }
 });
 
+test('small camp props keep useful proportions instead of stretching with the island', () => {
+  const cove=islands.get('island_cove_small').terrain.props;
+  const table=cove.find(p=>/_MapTable$/.test(p.name));assert.ok(table);assert.ok(table.size[1]<=1.051&&table.size[0]<4);
+  assert.ok(cove.some(p=>/_Campfire$/.test(p.name))&&cove.some(p=>/_grass_\d+$/.test(p.name)));
+  const lagoon=islands.get('island_lagoon').terrain.props;
+  assert.ok(lagoon.find(p=>/_Fence$/.test(p.name)).size[1]<=1.401);
+  assert.ok(lagoon.some(p=>/_Signal$/.test(p.name)));
+  const volcano=islands.get('island_volcanic').terrain.props;
+  assert.equal(volcano.filter(p=>/_dead_tree_\d+$/.test(p.name)).length,2);
+  const fort=islands.get('island_fortress_rock').terrain.props;
+  assert.ok(fort.filter(p=>/_supply_[ab]$/.test(p.name)).every(p=>p.size[1]<=1.151));
+});
+
 test('terrain collision resolves land penetration after rotation for each island', () => {
   for (const [name, fit] of islands) {
     const s = fit.terrain, i = s.field.indexOf(Math.min(...s.field));
