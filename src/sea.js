@@ -7,6 +7,16 @@ export { swell, waveHeight } from './waves.js';
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
 export const MAX_ISLES = 8, TRAIL = 28;
 
+// The detailed grid remains local and cheap. Two distant triangles continue the
+// sea underneath far-away islands, beyond the fully fogged edge of that grid.
+export function makeSeaBackdrop() {
+  const geometry = new THREE.PlaneGeometry(12000,12000);
+  geometry.rotateX(-Math.PI/2);
+  const mesh = new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:'#06374f',fog:true}));
+  mesh.position.y=-3; mesh.frustumCulled=false;
+  return mesh;
+}
+
 const CHOP = 1.8; // how far crests lean together (Gerstner); 0 gives plain sines
 
 const vertex = /* glsl */`
@@ -266,6 +276,7 @@ const fragment = /* glsl */`
 
 export class Sea {
   constructor(scene, sunDir) {
+    this.backdrop=makeSeaBackdrop(); scene.add(this.backdrop);
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
     geo.rotateX(-Math.PI / 2);
     const fog = scene.fog;
@@ -370,6 +381,7 @@ export class Sea {
     SWELLS.forEach((s, i) => { this.uniforms.uAmp.value[i] = s.amp * swell.k; });
     this.uniforms.uWhite.value = (swell.k - 1) * 1.1;
     this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
+    this.backdrop.position.set(this.mesh.position.x,-3,this.mesh.position.z);
   }
 }
 
