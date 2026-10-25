@@ -1,7 +1,7 @@
 // The voyage of the prototype: three treasure islands with part one's first levels, then Scar's schooner.
 // level: moves, kinds of treasure, and a goal (score or collect {kind: count}). who: the crew member who tells the story. kit/dock: Артем's island and dock models.
 // Islands are this many times wider than in the first prototype; hills rise by its square root, palms and rocks keep their size.
-export const ISLE_SCALE = 2.5;
+export const ISLE_SCALE = 7.5; // ×3 width/length over the previously accepted 2.5
 // Layout distances change independently of ship speed and island/prop size.
 export const VOYAGE_SPACING = 3;
 

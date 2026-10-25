@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as THREE from 'three';
-import { ISLANDS, SCENERY, BOSS_HOME, VOYAGE_SPACING } from '../src/islands.js';
+import { ISLANDS, SCENERY, BOSS_HOME, VOYAGE_SPACING, ISLE_SCALE } from '../src/islands.js';
 import { ISLAND_V3, prepareIslandV3, fitIslandV3 } from '../src/island-v3.js';
 import { shoreDistance, terrainPush, terrainClearance, coastAtlas, closedBasins, COAST_SIZE, COAST_RANGE } from '../src/island-shape.js';
 
@@ -133,4 +133,22 @@ test('voyage legs grow threefold without changing ship speed or quest identities
     assert.ok(Math.abs(metres/previous-3)<1e-8);
   }
   assert.deepEqual(ISLANDS.map(d=>d.name),['Остров Креста','Бухта Попугая','Остров Черепа']);
+});
+
+test('islands grow threefold in footprint while authored props keep their human scale', async () => {
+  assert.equal(ISLE_SCALE,7.5);
+  for(const name of ISLAND_V3){
+    const b=await readFile(new URL(`../public/models/islands/${name}.glb`,import.meta.url));
+    const {scene}=await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
+    prepareIslandV3(scene);
+    const old=fitIslandV3(scene,55,null,1,2.5),large=fitIslandV3(scene,165,null,1,7.5);
+    assert.ok(Math.abs(large.scale/old.scale-3)<1e-8,name);
+    assert.ok(Math.abs(large.vertical/old.vertical-Math.sqrt(3))<1e-8,name);
+    assert.ok(Math.abs(large.propScale-old.propScale)<1e-8,name);
+    assert.ok(large.terrain.cell<1.5,'coast grid remains fine enough for the enlarged shore');
+  }
+  const all=[...ISLANDS.map(i=>({x:i.x,z:i.z,r:i.radius*1.15})),...SCENERY.map(([x,z,r])=>({x,z,r:r*1.15}))];
+  for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
+    const a=all[i],b=all[j];assert.ok(Math.hypot(a.x-b.x,a.z-b.z)-a.r-b.r>100,'ships retain open passages between islands');
+  }
 });
