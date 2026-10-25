@@ -28,7 +28,7 @@ export class UI {
     button.setAttribute('aria-pressed', String(walking));
     $('deckStatus').hidden = !walking;
     $('fireL').disabled = $('fireR').disabled = walking;
-    $('keys').textContent = walking ? 'WASD — ходьба, F — к штурвалу, перетаскивание — камера' : 'W/S — паруса на шаг, A/D — руль, Q/E — залп, Enter — швартовка, F — на палубу';
+    $('keys').textContent = walking ? 'WASD — относительно камеры, перетаскивание — обзор, F — штурвал' : 'W/S — паруса на шаг, A/D — руль, Q/E — залп, Enter — швартовка, F — на палубу';
   }
 
   sailHud({ speed, throttle, reload, reloadMax, dock, battle, marks, goal }) {
