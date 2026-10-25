@@ -15,6 +15,7 @@ import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
 import { DeckWalker, makeDeckZone } from './deck-walk.js';
 import { DeckCamera } from './deck-camera.js';
+import { planBerth } from './berth-layout.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
@@ -110,12 +111,16 @@ export class World {
   // The berth lies alongside the pier, its outline sized to the player's ship.
   layBerth(isl) {
     const b = isl.userData.pier, u = this.player.mesh.userData;
-    b.berth = b.root.clone().addScaledVector(b.dir, (b.length ?? PIER) * .6).addScaledVector(b.side, PIER_WIDTH / 2 + u.width / 2 + SHIP_RULES.berthGap);
-    if (isl.userData.terrain) {
-      // A real shoreline cannot be shrunk to make the berth fit. Move the berth
-      // outwards if necessary, then verify it remains alongside this pier.
-      for (let i = 0; i < 40 && terrainPush(b.berth, b.heading, u.metrics.coast, isl); i++) b.berth.addScaledVector(b.dir, .5);
+    const at = along => b.root.clone().addScaledVector(b.dir, along).addScaledVector(b.side, PIER_WIDTH / 2 + u.width / 2 + SHIP_RULES.berthGap);
+    const plan = planBerth({ length: b.length ?? PIER, shipLength: u.length, pitch: DOCK_PITCH,
+      blocked: along => !!(isl.userData.terrain && terrainPush(at(along),b.heading,u.metrics.coast,isl)) });
+    if(plan.length !== (b.length ?? PIER)) {
+      const previous=b.mesh;
+      b.mesh=b.kit ? buildKitPier(b.kit,plan.segments) : buildPier(plan.length);
+      b.mesh.position.copy(b.root); b.mesh.rotation.copy(previous.rotation);
+      this.scene.remove(previous); this.scene.add(b.mesh);
     }
+    b.length=plan.length; b.berth=at(plan.along);
     // The island keeps ships off its beach, but never so far out that the berth itself is blocked.
     const coast = u.metrics.coast;
     isl.userData.block = Math.min(isl.userData.shore + 3,
@@ -148,6 +153,7 @@ export class World {
       this.scene.remove(pier.mesh);
       this.scene.add(kitPier);
       pier.mesh = kitPier;
+      pier.kit = def.dock;
       this.layBerth(isl);
     }
     const kinds = ['island_crescent_bay', 'island_jungle_ruins', 'island_fortress_rock'];
