@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { boundsOf } from './ship-layout.js';
+import { boundsOf, deckOutline, convexOutline } from './ship-layout.js';
 import { mergeStatic } from './merge.js';
 import { PLAYER_SHIP, MORSKOY_STERN } from './ship-config.js';
 
@@ -88,6 +88,7 @@ export function prepareMorskoy(root) {
     const n = mesh.name;
     if (/_Deck(?:_\d+)?$|_Quarterdeck(?:_\d+)?$/.test(n)) surfaces.push({
       name: n, kind: /Quarterdeck/.test(n) ? 'quarterdeck' : 'deck', bounds: plain(boundsOf(root, name => name === n)),
+      outline: deckOutline(root, mesh),
     });
     const step = /^quarterdeck_stairs_/.test(n);
     const solid = /^(mast_\d+_main|mizzen_mast|cannon_carriages|cannon_barrel|cabin_side_wall|cabin_back_wall|cabin_front_bulkhead|cabin_door_header|cabin_chart_table|cabin_chest|wheel_pedestal|capstan_base|capstan_handles|hatch_panels)_/.test(n);
@@ -99,7 +100,15 @@ export function prepareMorskoy(root) {
       else obstacles.push({ name: `${n}_${i}`, bounds });
     });
   }
-  const deckY = Math.max(...surfaces.filter(s => s.kind === 'deck').map(s => s.bounds.max[1]));
+  // The exporter splits one continuous main floor across four painted meshes.
+  // Present it as one logical deck, retaining the source pieces for inspection.
+  // The walking controller separately closes the stairs and quarterdeck region.
+  const decks = surfaces.filter(s => s.kind === 'deck'), mainBounds = new THREE.Box3();
+  for (const s of decks) { mainBounds.expandByPoint(new THREE.Vector3(...s.bounds.min)); mainBounds.expandByPoint(new THREE.Vector3(...s.bounds.max)); }
+  const mainOutline = convexOutline(decks.flatMap(s => s.outline));
+  decks[0].bounds = plain(mainBounds); decks[0].outline = mainOutline;
+  for (const s of decks.slice(1)) s.kind = 'deck-part';
+  const deckY = mainBounds.max.y;
   const quarterY = Math.max(...surfaces.filter(s => s.kind === 'quarterdeck').map(s => s.bounds.max[1]));
   const wheel = boundsOf(root, n => /^wheel_pedestal_/.test(n)).getCenter(new THREE.Vector3());
   root.userData.shipParts = {

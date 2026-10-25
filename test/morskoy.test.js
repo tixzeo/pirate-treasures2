@@ -69,7 +69,12 @@ test('navigation has separate gun solids, steps, cabin walls and safe crew ancho
   const obs = layout.obstacles;
   assert.equal(obs.filter(o => /^cannon_carriages_/.test(o.name)).length, 8);
   assert.ok(layout.surfaces.filter(s => s.kind === 'step').length >= 8);
-  assert.ok(layout.surfaces.filter(s => s.kind === 'deck').length >= 4);
+  assert.equal(layout.surfaces.filter(s => s.kind === 'deck').length, 1, 'painted fragments share one logical main floor');
+  const parts = layout.surfaces.filter(s => s.kind === 'deck-part');
+  assert.equal(parts.length, 3, 'source fragments remain inspectable');
+  const main = layout.surfaces.find(s => s.kind === 'deck');
+  assert.ok(main.outline.length >= 3);
+  assert.ok(parts.every(s => s.bounds.min[2] >= main.bounds.min[2] && s.bounds.max[2] <= main.bounds.max[2]));
   assert.ok(obs.some(o => /^cabin_side_wall_/.test(o.name)));
   for (const [role, point] of Object.entries(layout.anchors)) {
     const [x, y, z] = point, radius = .35, height = role === 'tim_cabin_boy' ? 1.35 : 1.75;

@@ -18,6 +18,19 @@ export class UI {
     $('matchHud').hidden = m !== 'match';
   }
 
+  deckHud(mode, available) {
+    const walking = mode === 'deck', button = $('deckToggle');
+    button.disabled = !available && !walking;
+    if (this.controlMode === mode) return;
+    this.controlMode = mode;
+    $('hud').dataset.control = mode;
+    button.textContent = walking ? 'Штурвал' : 'Палуба';
+    button.setAttribute('aria-pressed', String(walking));
+    $('deckStatus').hidden = !walking;
+    $('fireL').disabled = $('fireR').disabled = walking;
+    $('keys').textContent = walking ? 'WASD — ходьба, F — к штурвалу, перетаскивание — камера' : 'W/S — паруса на шаг, A/D — руль, Q/E — залп, Enter — швартовка, F — на палубу';
+  }
+
   sailHud({ speed, throttle, reload, reloadMax, dock, battle, marks, goal }) {
     // The next place to sail to, with an arrow that turns as the ship turns.
     $('goal').hidden = !goal || battle;

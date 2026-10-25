@@ -1,0 +1,70 @@
+<!doctype html><html><head><meta charset="utf-8"><title>TASK 002 deck walk smoke</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;left:0;top:0;max-width:90%;background:#10202ddd;color:white;font:12px monospace;white-space:pre-wrap;pointer-events:none}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;
+while(!w.game)await new Promise(r=>setTimeout(r,30));const g=w.game,{world,input}=g;await world.kitDone;
+while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js'),{deckClear}=await import('/src/deck-walk.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.resetProgress();
+world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
+const tick=(n=1)=>{for(let i=0;i<n;i++){g.readInput();world.update(1/60,input)}};
+const key=(code,type='keydown')=>w.dispatchEvent(new w.KeyboardEvent(type,{code,bubbles:true}));
+const tap=code=>{key(code);tick();key(code,'keyup')};
+const captain=world.crew.captain,p=world.player;
+input.throttle=.5;tap('KeyW');ok('helm W changes sails',input.throttle>.5,input.throttle);
+key('KeyA');tick();ok('helm A steers',input.rudder===1,input.rudder);key('KeyA','keyup');tick();
+const sails=input.throttle;tap('KeyF');tick(90);
+ok('F enters deck mode',world.seaControlMode==='deck');
+ok('same rigged captain remains a ship child',captain===world.crew.captain&&captain.parent===p.mesh);
+ok('spawn is clear and on main deck',deckClear(world.deckWalker.zone,captain.position.x,captain.position.z)&&Math.abs(captain.position.y-world.deckWalker.zone.floor)<1e-6,captain.position.toArray());
+ok('touch-accessible switch and gun state',w.document.getElementById('deckToggle').textContent==='Штурвал'&&w.document.getElementById('fireL').disabled);
+const local=captain.position.clone(),pos=p.pos.clone(),heading=p.heading;
+tick(120);
+ok('ship continues sailing with unchanged sails',p.pos.distanceTo(pos)>1&&input.throttle===sails&&p.throttle===sails,{sails,speed:p.speed});
+ok('stationary feet do not drift in ship frame',captain.position.distanceTo(local)<1e-8);
+const feet=p.mesh.worldToLocal(captain.getWorldPosition(new T.Vector3()));
+ok('feet follow yaw pitch roll',feet.distanceTo(captain.position)<1e-6&&p.mesh.rotation.toArray().slice(0,3).every(Number.isFinite));
+const start=captain.position.clone();key('KeyD');tick(15);
+ok('WASD moves only the captain',captain.position.distanceTo(start)>.1&&input.rudder===0&&input.throttle===sails&&p.rudder===0,{position:captain.position.toArray(),input:{...input}});
+ok('Walk runs while moving',captain.userData.deckMotion==='Walk'&&captain.userData.actions.Walk.isRunning());
+const actionTime=captain.userData.actions.Walk.time;tick(5);ok('Walk advances without per-frame restart',captain.userData.actions.Walk.time!==actionTime);
+key('KeyD','keyup');tick(20);ok('Idle resumes when stopped',captain.userData.deckMotion==='Idle'&&captain.userData.actions.Idle.isRunning());
+p.mesh.updateMatrixWorld(true);const toShip=p.mesh.matrixWorld.clone().invert(),vertex=new T.Vector3();let shoeY=Infinity;
+captain.traverse(o=>{if(!o.isMesh)return;const matrix=toShip.clone().multiply(o.matrixWorld);for(let i=0;i<o.geometry.attributes.position.count;i++){o.getVertexPosition(i,vertex).applyMatrix4(matrix);shoeY=Math.min(shoeY,vertex.y)}});
+ok('animated shoes rest on deck',Math.abs(shoeY-world.deckWalker.zone.floor)<.12,{shoeY,floor:world.deckWalker.zone.floor});
+key('KeyW');tick(10);key('KeyW','keyup');key('KeyS');tick(10);key('KeyS','keyup');
+ok('deck W and S preserve sail setting',input.throttle===sails&&p.throttle===sails,input.throttle);
+key('KeyD');tick(400);key('KeyD','keyup');ok('edge remains safe after sustained input',deckClear(world.deckWalker.zone,captain.position.x,captain.position.z),captain.position.toArray());
+const reload={...world.reload};tap('KeyQ');tap('KeyE');ok('deck Q/E cannot fire',world.reload.left===reload.left&&world.reload.right===reload.right&&world.queue.length===0);
+world.orbit(70,40);world.zoom(-80);tick(30);ok('deck camera stays finite',world.camera.position.toArray().every(Number.isFinite),world.camera.position.toArray());
+tap('KeyF');ok('F restores helm and captain anchor',world.seaControlMode==='helm'&&captain.position.toArray().every((v,i)=>Math.abs(v-p.mesh.userData.navigation.anchors.captain[i])<1e-6));
+ok('helm retains sails and releases guns',input.throttle===sails&&!w.document.getElementById('fireL').disabled);
+tap('KeyQ');tick(60);ok('helm cannons work again',world.reload.left>0||world.queue.length>0);
+world.fx.clearBalls();world.queue=[];world.reload.left=world.reload.right=0;
+w.document.getElementById('deckToggle').click();tick();ok('UI enters deck without keyboard',world.seaControlMode==='deck');
+w.dispatchEvent(new w.Event('blur'));tick();ok('focus loss clears walking input',input.walkX===0&&input.walkZ===0&&!world.deckWalker.moving);
+world.ui.dialog({title:'Smoke',text:'Input focus',buttons:[['Close',()=>world.ui.closeDialog()]]});tick();ok('dialog safely exits deck',world.seaControlMode==='helm');world.ui.closeDialog();
+world.setSeaControlMode('deck');p.hp=0;tick();ok('damage safely exits deck',world.seaControlMode==='helm');p.hp=p.maxHp;p.sinking=0;world.lost=false;
+world.teleportBerth(world.isles[0],0);input.throttle=0;tick();world.setSeaControlMode('deck');g.land();
+ok('landing exits deck and starts match',world.seaControlMode==='helm'&&g.mode==='match');w.document.getElementById('leave').click();
+ok('return from match restores helm',g.mode==='sea'&&world.seaControlMode==='helm');
+world.setSeaControlMode('deck');world.teleport(world.boss.pos,65);world.startBattle();tick();
+ok('battle camera and helm survive teleport',world.state==='battle'&&world.seaControlMode==='helm'&&world.camera.position.toArray().every(Number.isFinite));
+world.setSeaControlMode('deck');tick();w.document.getElementById('deckToggle').click();tick();ok('returning from battle deck restores battle helm',world.seaControlMode==='helm'&&world.state==='battle');
+world.resetProgress();input.throttle=0;world.teleport(new T.Vector3(),0);world.setSeaControlMode('deck');tick(60);
+ok('reset permits a fresh deck session',world.seaControlMode==='deck'&&deckClear(world.deckWalker.zone,captain.position.x,captain.position.z));
+const wanted=new URLSearchParams(location.search).get('mode');if(wanted==='walk'){key('KeyD');tick(5);key('KeyD','keyup')}
+w.document.getElementById('banner').hidden=true;world.marker.visible=false;
+world.renderer.info.autoReset=false;world.renderer.info.reset();world.render();
+const stats={calls:world.renderer.info.render.calls,triangles:world.renderer.info.render.triangles,geometries:world.renderer.info.memory.geometries};
+out.textContent='PASS '+results.length+' deck checks | '+JSON.stringify(stats);document.body.dataset.result=JSON.stringify({results,stats,control:world.seaControlMode});
+w.addEventListener('resize',()=>requestAnimationFrame(()=>{world.updateCamera(1);world.render()}));
+if(new URLSearchParams(location.search).has('manual')){
+  const clock=new T.Clock(),freeze=document.createElement('button');freeze.textContent='Freeze';freeze.style='position:fixed;right:0;top:24px';document.body.appendChild(freeze);
+  freeze.onclick=()=>world.renderer.setAnimationLoop(null);
+  world.renderer.info.autoReset=true;
+  world.renderer.setAnimationLoop(()=>{g.readInput();world.update(Math.min(clock.getDelta(),.05),input);world.render();document.body.dataset.manual=JSON.stringify({control:world.seaControlMode,position:captain.position.toArray(),throttle:input.throttle,rudder:input.rudder,motion:captain.userData.deckMotion});});
+}
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>
