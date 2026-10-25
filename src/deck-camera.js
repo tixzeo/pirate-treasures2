@@ -62,11 +62,32 @@ export class DeckCamera {
 // Fade only the crew between the camera and the captain. Per-entry clones keep
 // shared character/portrait materials intact; restore and dispose them at exit.
 export class CrewOcclusion {
-  constructor(figures) { this.figures = figures.map(({ figure, bounds }) => ({ figure, bounds, meshes: [], materials: new Map() })); }
+  constructor(figures) {
+    this.figures = figures.map(({ figure, frame = figure.parent }) => ({ figure, frame,
+      bounds: { min: [0, 0, 0], max: [0, 0, 0] }, meshes: [], materials: new Map() }));
+    this.box = new THREE.Box3(); this.partBox = new THREE.Box3();
+    this.inverse = new THREE.Matrix4(); this.matrix = new THREE.Matrix4();
+  }
   update(eye, position) {
     const to = eye.toArray();
     for (const entry of this.figures) {
-      const blocked = entry.figure.visible && [.2, .9, 1.65].some(y => cameraLimit([position.x, position.y + y, position.z], to, [entry.bounds]) < 1);
+      // Refit in ship space from the current child transforms. Rigid geometry
+      // reuses cached boxes; animated skins recompute their deformed bounds.
+      entry.figure.updateWorldMatrix(true, true);
+      if (entry.frame) this.inverse.copy(entry.frame.matrixWorld).invert(); else this.inverse.identity();
+      this.box.makeEmpty();
+      entry.figure.traverseVisible(mesh => {
+        if (!mesh.isMesh) return;
+        if (mesh.isSkinnedMesh) mesh.computeBoundingBox();
+        else if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        const box = mesh.isSkinnedMesh ? mesh.boundingBox : mesh.geometry.boundingBox;
+        this.matrix.multiplyMatrices(this.inverse, mesh.matrixWorld);
+        this.box.union(this.partBox.copy(box).applyMatrix4(this.matrix));
+      });
+      this.box.min.toArray(entry.bounds.min); this.box.max.toArray(entry.bounds.max);
+      let visible = !this.box.isEmpty();
+      for (let p = entry.figure; p && p !== entry.frame; p = p.parent) visible &&= p.visible;
+      const blocked = visible && [.2, .9, 1.65].some(y => cameraLimit([position.x, position.y + y, position.z], to, [entry.bounds]) < 1);
       if (blocked && !entry.meshes.length) entry.figure.traverse(mesh => {
         if (!mesh.isMesh) return;
         const original = mesh.material;

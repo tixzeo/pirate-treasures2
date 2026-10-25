@@ -231,10 +231,8 @@ export class World {
       this.walkNavigation = navigation; this.deckWalker = walker;
       this.deckCamera = new DeckCamera(this.deckView);
       this.crewOcclusion = new CrewOcclusion(Object.values(this.crew)
-        .filter(c => c !== this.crew.captain && c.visible && c.parent === this.player.mesh).map(figure => {
-          const box = boundsOf(figure, () => true); figure.updateMatrix(); box.applyMatrix4(figure.matrix);
-          return { figure, bounds: { min: box.min.toArray(), max: box.max.toArray() } };
-        }));
+        .filter(c => c !== this.crew.captain && c.visible && c.parent === this.player.mesh)
+        .map(figure => ({ figure, frame: this.player.mesh })));
       this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
       this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
       this.crew.captain.rotation.y = walker.facing;
