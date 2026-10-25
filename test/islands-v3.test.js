@@ -69,6 +69,21 @@ test('inward-facing volcano is opaque and visible from above', () => {
   assert.ok(ray.intersectObjects(ground)[0]?.point.y > 4, 'cone, rather than the sand underneath, occludes the sea');
 });
 
+test('volcano foot meets the real ground while the crater stays at its authored height', () => {
+  const fit=islands.get('island_volcanic'),foot=fit.terrain.volcanoFoot;
+  assert.ok(foot.samples.length>=20,'the entire lower ring was inspected');
+  assert.ok(foot.samples.every(p=>p.before-p.ground>.2),'the source really contained a gap');
+  assert.ok(foot.samples.every(p=>Math.abs(p.after-p.ground)<.031),'ring extends slightly into supporting ground');
+  const meshes=fit.wrap.getObjectsByProperty('isMesh',true).filter(m=>m.material.name==='island_v3_ground');
+  fit.wrap.updateMatrixWorld(true);
+  for(const p of foot.samples) {
+    const at=new THREE.Vector3(p.x,foot.peak+10,p.z).applyAxisAngle(new THREE.Vector3(0,1,0),fit.wrap.rotation.y);
+    const hit=new THREE.Raycaster(at,new THREE.Vector3(0,-1,0)).intersectObjects(meshes)[0];
+    assert.ok(hit&&Math.abs(hit.point.y-p.ground)<.06,'visible cone and ground have no vertical gap at the foot');
+  }
+  assert.ok(Math.abs(foot.peak-(5.6475*fit.vertical+.35))<.01);
+});
+
 test('water atlas shares outer shore fields with millimetre precision and no slot bleed', () => {
   const shapes = [...islands.values()].map(f => f.terrain);
   const { data, width, height } = coastAtlas(shapes, 8);

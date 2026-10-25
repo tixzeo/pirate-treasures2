@@ -10,6 +10,27 @@ const PIER = /_pier_|_landing_/;
 const STILL_WATER = /spring$|inner_pool$|cenote$/;
 export const POND_LEVEL = .12;
 
+// Extend the cone's lowest ring onto the actual terrain below it. Higher rings,
+// the crater and lava retain their authored positions; no fixed GLB coordinates.
+export function settleVolcanoBase(cone, ground) {
+  cone.geometry.computeBoundingBox();
+  const box = cone.geometry.boundingBox, cutoff = box.min.y + (box.max.y-box.min.y)*.1;
+  const p = cone.geometry.attributes.position, ray = new THREE.Raycaster(), down = new THREE.Vector3(0,-1,0), seen = new Set(), samples = [];
+  for(let i=0;i<p.count;i++) {
+    if(p.getY(i)>cutoff)continue;
+    const x=p.getX(i),z=p.getZ(i),key=`${x.toFixed(5)},${z.toFixed(5)}`;
+    ray.set(new THREE.Vector3(x,box.max.y+10,z),down);
+    const hit=ray.intersectObjects(ground,false)[0];
+    if(!hit)throw new Error('Volcano foot has no supporting terrain');
+    const y=hit.point.y-.03;
+    if(!seen.has(key)){seen.add(key);samples.push({x,z,ground:hit.point.y,before:p.getY(i),after:y});}
+    p.setY(i,y);
+  }
+  if(!samples.length)throw new Error('Volcano cone has no foot ring');
+  p.needsUpdate=true;cone.geometry.computeVertexNormals();cone.geometry.computeBoundingBox();
+  return {samples,peak:box.max.y};
+}
+
 export function prepareIslandV3(root) {
   const materials = new Map();
   root.traverse(o => {
@@ -79,7 +100,10 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
       m.position.set((at.x - centre.x) * scale, at.y * vertical + .35, (at.z - centre.z) * scale); model.add(m);
     }
   }
+  const cone = ground.find(m => /crater_cone$/.test(m.name));
+  const volcanoFoot = cone && settleVolcanoBase(cone, ground.filter(m=>m!==cone));
   const terrain = makeIslandShape(ground);
+  if(volcanoFoot)terrain.volcanoFoot=volcanoFoot;
   const ponds = [];
   for (const basin of terrain.basins) {
     const cells = basin.map(i => ({ x: terrain.minX + (i % terrain.size + .5) * terrain.cell,
