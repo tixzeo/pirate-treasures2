@@ -125,7 +125,7 @@ world.onControlMode = () => { clearControlInput(); ui.deckHud(world.seaControlMo
 world.onRepair = () => { clearControlInput(); setSails(1); };
 function toggleDeck() {
   if (mode !== 'sea' || ui.open) return;
-  if (!world.setSeaControlMode(world.seaControlMode === 'deck' ? 'helm' : 'deck')) ui.flash('Палуба пока недоступна');
+  if (!world.setSeaControlMode(world.seaControlMode === 'deck' ? 'helm' : 'deck')) ui.flash(world.state === 'battle' ? 'В бою нужен штурвал' : 'Палуба пока недоступна');
 }
 $('deckToggle').addEventListener('click', toggleDeck);
 

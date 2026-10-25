@@ -202,7 +202,7 @@ export class World {
 
   canDeckWalk() {
     const c = this.crew.captain;
-    return !!(this.player.hp > 0 && !this.player.sinking && this.player.mesh.parent &&
+    return !!(this.state === 'sail' && this.player.hp > 0 && !this.player.sinking && this.player.mesh.parent &&
       c?.parent === this.player.mesh && c.userData.actions?.Walk && c.userData.actions?.Idle &&
       this.player.mesh.userData.navigation?.surfaces?.find(s => s.kind === 'deck')?.outline?.length >= 3);
   }
@@ -385,6 +385,7 @@ export class World {
 
   startBattle() {
     this.state = 'battle';
+    this.setSeaControlMode('helm');
     this.boss.throttle = .8;
     this.boss.reload = 3;
     this.ui.banner('«Каракатица» идёт на абордаж!', 'Шхуна капитана Шрама. Ставьте корабль бортом и давайте залп: Q — левый борт, E — правый.');
