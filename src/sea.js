@@ -13,7 +13,7 @@ export function makeSeaBackdrop(material = new THREE.MeshBasicMaterial({color:'#
   const geometry = new THREE.PlaneGeometry(12000,12000);
   geometry.rotateX(-Math.PI/2);
   const mesh = new THREE.Mesh(geometry,material);
-  mesh.position.y=-3; mesh.frustumCulled=false;
+  mesh.position.y=0; mesh.frustumCulled=false;
   return mesh;
 }
 
@@ -189,6 +189,7 @@ const fragment = /* glsl */`
   void main() {
     vec2 p = vWorld.xz;
     vec2 gridOffset = abs(p-uSeaCenter);
+    float detail = (1.0-uFarPlane) * (1.0-smoothstep(${(SIZE * .34).toFixed(1)},${(SIZE * .48).toFixed(1)},max(gridOffset.x,gridOffset.y)));
     if(uFarPlane>0.5 && max(gridOffset.x,gridOffset.y)<${(SIZE * .47).toFixed(1)}) discard;
     float dist = length(cameraPosition - vWorld);
     float near = 1.0 - smoothstep(40.0, 230.0, dist);
@@ -241,12 +242,17 @@ const fragment = /* glsl */`
 
     // What the surface mirrors: the sky, and on high quality the islands and ships too.
     vec3 mirror = skyColor(reflect(-view, n));
-    if (uUseRefl > 0.5) {
+    // Planar reflection belongs to the near y=0 surface. Fade it with the same
+    // weight as geometric waves so the far sea cannot form a second mirror.
+    if (uUseRefl > 0.5 && detail > 0.001) {
       vec4 rc = uReflMatrix * vec4(vWorld, 1.0);
       if (rc.w > 0.0) {
         vec2 ruv = rc.xy / rc.w + n.xz * 0.12;
         vec2 edge = smoothstep(vec2(0.0), vec2(0.05), min(ruv, 1.0 - ruv));
-        mirror = mix(mirror, texture2D(uRefl, clamp(ruv, 0.001, 0.999)).rgb, edge.x * edge.y * 0.8);
+        vec4 reflected = texture2D(uRefl, clamp(ruv, 0.001, 0.999));
+        // The target contains scene objects over transparent clear. Sky uses
+        // skyColor on both water surfaces, avoiding a bright full-width seam.
+        mirror = mix(mirror, reflected.rgb / max(reflected.a,0.001), edge.x * edge.y * 0.8 * detail * reflected.a);
       }
     }
     vec3 col = mix(body, mirror, fres * 0.85);
@@ -394,7 +400,7 @@ export class Sea {
     SWELLS.forEach((s, i) => { this.uniforms.uAmp.value[i] = s.amp * swell.k; });
     this.uniforms.uWhite.value = (swell.k - 1) * 1.1;
     this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
-    this.backdrop.position.set(this.mesh.position.x,-3,this.mesh.position.z);
+    this.backdrop.position.set(this.mesh.position.x,0,this.mesh.position.z);
     this.uniforms.uSeaCenter.value.set(this.mesh.position.x,this.mesh.position.z);
     this.uniforms.uFogNear.value=this.fog.near; this.uniforms.uFogFar.value=this.fog.far;
   }

@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Ocean quality seam checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;background:#10202ddd;color:white;pointer-events:none;font:12px monospace}nav{position:fixed;bottom:8px;left:8px;display:flex;gap:6px;flex-wrap:wrap}button{padding:10px;background:#163642;color:white;border:1px solid #ccc;border-radius:6px}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><nav><button data-quality="low">Low</button><button data-quality="medium">Medium</button><button data-quality="high">High</button><button data-view="far">Далеко</button><button data-view="near">Близко</button></nav><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];let quality='high',view='far',reflectionSeen=false;
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const {world,input}=w.game;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);input.throttle=0;
+world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');for(let i=0;i<600;i++)world.atmo.update(1/60,world.camera);
+const draw=world.renderer.render.bind(world.renderer);
+world.renderer.render=(scene,camera)=>{
+ if(camera===world.post.vcam){
+  reflectionSeen=true;
+  if(world.sea.mesh.visible||world.sea.backdrop.visible||world.sea.uniforms.uUseRefl.value!==0)throw Error('Water entered its own reflection render');
+ }
+ return draw(scene,camera);
+};
+ok('far sea meets the reflection plane at y=0',world.sea.backdrop.position.y===0);
+function render(){
+ const isle=world.isles[0],b=isle.userData.pier,cam=world.camera;
+ if(view==='far'){
+  cam.position.copy(isle.position).addScaledVector(b.dir,550);cam.position.y=18;
+  world.player.pos.copy(cam.position).addScaledVector(b.dir,-40);world.player.pos.y=0;
+ }else{
+  world.player.pos.copy(b.berth);cam.position.copy(b.berth).addScaledVector(b.dir,85).addScaledVector(b.side,35);cam.position.y=14;
+ }
+ world.player.heading=b.heading;world.player.mesh.rotation.set(0,b.heading,0);
+ cam.lookAt(isle.position.clone().add(new T.Vector3(0,3,0)));cam.updateMatrixWorld(true);
+ world.atmo.apply(0,cam);world.sea.update(18,world.player.pos);world.post.setQuality(quality);
+ world.renderer.info.autoReset=false;world.renderer.info.reset();reflectionSeen=false;world.render();
+ if(world.renderer.info.programs.some(p=>p.diagnostics?.runnable===false))throw Error('A scene shader failed to compile');
+ if(quality==='high'&&!reflectionSeen)throw Error('High quality did not render scene reflection');
+ if(!world.sea.mesh.visible||!world.sea.backdrop.visible)throw Error('Water visibility was not restored');
+ document.body.dataset.result=JSON.stringify({results,quality,view,reflectionSeen,stats:{...world.renderer.info.render}});
+ out.textContent='PASS '+results.length+' quality checks · '+quality+' · '+view;
+}
+for(const q of ['low','medium','high'])for(const v of ['far','near']){
+ quality=q;view=v;render();ok(q+' '+v+' scene renders with valid shaders and restored water',true);
+}
+quality='high';view='far';render();
+for(const button of document.querySelectorAll('nav button'))button.onclick=()=>{quality=button.dataset.quality||quality;view=button.dataset.view||view;render()};
+w.addEventListener('resize',()=>requestAnimationFrame(render));
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>
