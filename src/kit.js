@@ -6,6 +6,7 @@ import { mergeStatic } from './merge.js';
 import { captureShipParts } from './ship-layout.js';
 import { PLAYER_SHIP } from './ship-config.js';
 import { prepareMorskoy } from './morskoy.js';
+import { ISLAND_V3, isIslandV3, prepareIslandV3 } from './island-v3.js';
 export { boundsOf } from './ship-layout.js';
 
 // Артем's World Kit (public/models/kit): ships, islands, docks, props and match-3 pieces.
@@ -16,7 +17,7 @@ const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 
 const FILES = [
   PLAYER_SHIP.model, 'scar_karakatitsa',
-  'island_small_palm_cove', 'island_medium_lagoon', 'island_large_volcanic',
+  ...ISLAND_V3.map(name => `islands/${name}`),
   'dock_pine', 'dock_royal', 'dock_ruined', 'palm_tree', 'rock_cluster',
   'tile_base', 'token_ruby', 'token_emerald', 'token_compass', 'token_seashell', 'token_doubloon',
   // The Water Life Pack (public/models/water): Scar's rowboat, wreckage, buoys, a gull and fish.
@@ -41,7 +42,9 @@ export const glows = [];
 export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}models/${path.includes('/') ? path : 'kit/' + path}.glb`).then(g => {
   const f = path.split('/').pop(), water = path.startsWith('water/');
   const morskoy = f === 'morskoy_strannik_v2';
+  const islandV3 = isIslandV3(f);
   if (morskoy) prepareMorskoy(g.scene);
+  if (islandV3) prepareIslandV3(g.scene);
   const seen = new Set();
   g.scene.traverse(o => {
     if (!o.isMesh) return;
@@ -57,7 +60,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
       }
       col.needsUpdate = true;
     }
-    if (morskoy) {
+    if (morskoy || islandV3) {
       // The adapter assigns shared materials by surface type before kit detailing.
     } else if (water) {
       if (!WATER_METAL.test(o.material.name)) o.material.metalness = 0;
@@ -75,7 +78,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     o.material.envMapIntensity = .45; // the board's room reflections otherwise wash flat tops out to white
     if (/Sail|Flag|Wing|Fin|Canvas/.test(o.name)) o.material.side = THREE.DoubleSide;
     // Wood grain, sailcloth, sand and stone from the texture pack; the match-3 pieces stay clean.
-    const kind = !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
+    const kind = !islandV3 && !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
     if (kind) o.material = withDetail(o.material, kind);
   });
   // Static parts welded per material; what the game looks up by name or animates stays separate.

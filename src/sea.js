@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
 
 // A few long swells added together. Ships read waveHeight() to bob on the same waves the shader draws.
 const SWELLS = [
@@ -122,6 +123,9 @@ const fragment = /* glsl */`
   uniform float uFogNear;
   uniform float uFogFar;
   uniform vec3 uIsles[${MAX_ISLES}];   // x, z, shore radius
+  uniform sampler2D uCoastAtlas;
+  uniform vec3 uCoastGrid[${MAX_ISLES}]; // local grid min x/z, cell metres (0 = legacy)
+  uniform vec2 uCoastRot[${MAX_ISLES}]; // cos/sin of island yaw
   uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
   varying vec3 vWorld;
   varying vec3 vNormal;
@@ -132,6 +136,21 @@ const fragment = /* glsl */`
     vec2 i = floor(p), f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+  }
+
+  float shoreAt(vec2 p, int i) {
+    vec2 off = p - uIsles[i].xy;
+    float cell = uCoastGrid[i].z;
+    if (cell <= 0.0) return length(off) - uIsles[i].z;
+    vec2 rot = uCoastRot[i];
+    vec2 local = vec2(rot.x * off.x - rot.y * off.y, rot.y * off.x + rot.x * off.y);
+    vec2 grid = (local - uCoastGrid[i].xy) / cell - 0.5;
+    vec2 edge = clamp(grid, 0.0, ${COAST_SIZE - 1}.0);
+    float outside = length(grid - edge) * cell;
+    if (outside > 32.0) return outside; // far water needs no atlas sample
+    vec2 uv = vec2((float(i) * ${COAST_SIZE}.0 + edge.x + 0.5) / ${COAST_SIZE * MAX_ISLES}.0, (edge.y + 0.5) / ${COAST_SIZE}.0);
+    vec2 encoded = texture2D(uCoastAtlas, uv).rg;
+    return dot(encoded, vec2(65280.0, 255.0)) / 65535.0 * ${COAST_RANGE * 2}.0 - ${COAST_RANGE}.0 + outside;
   }
 
   // The sky as the water mirrors it: a gradient from the haze at the horizon up to blue, soft clouds and the sun's glow.
@@ -191,7 +210,10 @@ const fragment = /* glsl */`
     float lagoon = 0.0, sand = 0.0, surf = 0.0;
     for (int i = 0; i < ${MAX_ISLES}; i++) {
       if (uIsles[i].z <= 0.0) continue;
-      float d = length(p - uIsles[i].xy) - uIsles[i].z;
+      float d = shoreAt(p, i);
+      // Stop crests drawing through low sand/grass. Real pools and open bays
+      // remain water because they are absent from the physical land field.
+      if (uCoastGrid[i].z > 0.0 && d < 0.0) discard;
       lagoon = max(lagoon, 1.0 - smoothstep(0.0, 24.0, d));
       sand = max(sand, 1.0 - smoothstep(-2.0, 7.0, d));
       float band = 1.0 - smoothstep(0.0, 2.2, abs(d - 1.5 - sin(uTime * 1.3 + atan(p.y - uIsles[i].y, p.x - uIsles[i].x) * 5.0) * 0.8));
@@ -284,6 +306,9 @@ export class Sea {
       uFogNear: { value: fog.near },
       uFogFar: { value: fog.far },
       uIsles: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector3()) },
+      uCoastAtlas: { value: new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1) },
+      uCoastGrid: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector3()) },
+      uCoastRot: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector2(1, 0)) },
       uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
     };
     this.uniforms.uRefl.value.needsUpdate = true;
@@ -309,7 +334,18 @@ export class Sea {
   }
 
   setIslands(list) {
-    list.slice(0, MAX_ISLES).forEach((isl, i) => this.uniforms.uIsles.value[i].set(isl.position.x, isl.position.z, isl.userData.shore));
+    if (list.length > MAX_ISLES) throw new Error('Sea island capacity exceeded');
+    const atlas = coastAtlas(list.map(isl => isl.userData.terrain), MAX_ISLES);
+    const texture = new THREE.DataTexture(atlas.data, atlas.width, atlas.height);
+    texture.magFilter = texture.minFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+    this.uniforms.uCoastAtlas.value.dispose(); this.uniforms.uCoastAtlas.value = texture;
+    for (let i = 0; i < MAX_ISLES; i++) {
+      const isl = list[i], shape = isl?.userData.terrain;
+      this.uniforms.uIsles.value[i].set(isl?.position.x ?? 0, isl?.position.z ?? 0, isl?.userData.shore ?? 0);
+      this.uniforms.uCoastGrid.value[i].set(shape?.minX ?? 0, shape?.minZ ?? 0, shape?.cell ?? 0);
+      this.uniforms.uCoastRot.value[i].set(Math.cos(shape?.yaw ?? 0), Math.sin(shape?.yaw ?? 0));
+    }
   }
 
   // Ships leave a fading line of foam behind them.

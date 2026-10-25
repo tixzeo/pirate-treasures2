@@ -79,7 +79,7 @@ export class SeaLife {
     const w = this.world.player.mesh.userData.width;
     for (const isl of this.world.isles) {
       const b = isl.userData.pier;
-      const out = b.root.clone().addScaledVector(b.dir, PIER_LENGTH + 5);
+      const out = b.root.clone().addScaledVector(b.dir, (b.length ?? PIER_LENGTH) + 5);
       for (const [kind, across] of [['buoy_lantern', 0], ['buoy_red_white', PIER_WIDTH / 2 + w + 9]]) {
         const m = part(kind);
         m.scale.setScalar(BUOY_SCALE);

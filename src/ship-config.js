@@ -13,6 +13,8 @@ export const PLAYER_SHIP = Object.freeze({
   handling: BRIGANTINE.handling,
 });
 
+export const MORSKOY_STERN = Object.freeze({ rise: 2.4, helmScale: .55, standGap: .7 });
+
 // Keep weapon tuning and mooring tolerances independent of the visual scale.
 export const SHIP_RULES = Object.freeze({
   berthGap: .6,
