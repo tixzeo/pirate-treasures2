@@ -24,7 +24,7 @@ test('all six real V3 assets fit, with finite coast fields and bounded mesh coun
     const land = fit.terrain.field.filter(v => v < 0).length;
     assert.ok(land > 1000 && land < fit.terrain.field.length - 1000, name);
     signatures.add(land);
-    assert.ok(fit.wrap.getObjectsByProperty('isMesh', true).length <= 6, 'static details are welded by material');
+    assert.ok(fit.wrap.getObjectsByProperty('isMesh', true).length <= 7, 'static details are welded; one opaque foundation is added');
   }
   assert.equal(signatures.size, 6, 'shore shapes are not six scaled copies');
 });
@@ -88,6 +88,25 @@ test('inward-facing volcano is opaque and visible from above', () => {
   }
   const ray = new THREE.Raycaster(new THREE.Vector3(7, 100, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), wrap.rotation.y), new THREE.Vector3(0, -1, 0));
   assert.ok(ray.intersectObjects(ground)[0]?.point.y > 4, 'cone, rather than the sand underneath, occludes the sea');
+});
+
+test('islands have opaque undersides and side walls without closing their open bay', () => {
+  for(const [name,{wrap,terrain:s}] of islands){
+    const foundation=wrap.getObjectByName('Island_solid_foundation');assert.ok(foundation,name);
+    assert.equal(foundation.material.transparent,false);assert.equal(foundation.material.depthWrite,true);
+    assert.ok(s.foundation.skirts>0&&s.foundation.caps>0&&s.foundation.floor<=-4);
+    wrap.updateMatrixWorld(true);let count=0;
+    for(let i=0;i<s.field.length;i+=73)if(s.field[i]<-s.cell*2){
+      const x=s.minX+(i%s.size+.5)*s.cell,z=s.minZ+(Math.floor(i/s.size)+.5)*s.cell;
+      const p=new THREE.Vector3(x,s.foundation.floor-1,z).applyAxisAngle(new THREE.Vector3(0,1,0),s.yaw);
+      const hit=new THREE.Raycaster(p,new THREE.Vector3(0,1,0)).intersectObject(foundation)[0];
+      assert.ok(hit&&Math.abs(hit.point.y-s.foundation.floor)<.002,`${name} has a solid underside at ${x},${z}`);count++;
+    }
+    assert.ok(count>100,name);
+  }
+  const {wrap,terrain:s}=islands.get('island_crescent_bay');
+  const p=new THREE.Vector3(0,s.foundation.floor-1,0);
+  assert.equal(new THREE.Raycaster(p,new THREE.Vector3(0,1,0)).intersectObject(wrap.getObjectByName('Island_solid_foundation')).length,0,'open lagoon is not capped with a disk');
 });
 
 test('volcano foot meets the real ground while the crater stays at its authored height', () => {

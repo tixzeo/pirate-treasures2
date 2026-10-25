@@ -3,6 +3,7 @@ import { boundsOf } from './ship-layout.js';
 import { flatten, mergeStatic } from './merge.js';
 import { makeIslandShape, shoreDistance } from './island-shape.js';
 import { groundProbe, groundedAnchor } from './island-ground.js';
+import { makeIslandFoundation } from './island-solid.js';
 
 export const ISLAND_V3 = ['island_cove_small', 'island_lagoon', 'island_volcanic', 'island_crescent_bay', 'island_jungle_ruins', 'island_fortress_rock'];
 export const isIslandV3 = name => ISLAND_V3.includes(name);
@@ -109,6 +110,8 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
   }
   const terrain = makeIslandShape(ground);
   terrain.props = planted;
+  const foundation = makeIslandFoundation(ground); model.add(foundation);
+  terrain.foundation = foundation.userData.foundation;
   if(volcanoFoot)terrain.volcanoFoot=volcanoFoot;
   const ponds = [];
   for (const basin of terrain.basins) {
@@ -139,7 +142,7 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
     m.geometry.translate(-centre.x - nativeDir.x * coast / scale, 0, -centre.z - nativeDir.z * coast / scale).scale(propScale, propScale, propScale);
     m.position.set(nativeDir.x * coast, .35, nativeDir.z * coast); model.add(m);
   }
-  model.traverse(o => { if (o.isMesh) { o.castShadow = o.material.name !== 'island_v3_water'; o.receiveShadow = true; } });
+  model.traverse(o => { if (o.isMesh) { o.castShadow = !/island_v3_(water|foundation)/.test(o.material.name); o.receiveShadow = true; } });
   mergeStatic(model, /(?!)/);
   const wrap = new THREE.Group(); wrap.add(model);
   wrap.rotation.y = dir ? Math.atan2(dir.x, dir.z) - Math.atan2(nativeDir.x, nativeDir.z) : seed * 2.39;
