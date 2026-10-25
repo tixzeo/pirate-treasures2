@@ -54,6 +54,16 @@ ok('battle camera and helm survive teleport',world.state==='battle'&&world.seaCo
 world.setSeaControlMode('deck');tick();w.document.getElementById('deckToggle').click();tick();ok('returning from battle deck restores battle helm',world.seaControlMode==='helm'&&world.state==='battle');
 world.resetProgress();input.throttle=0;world.teleport(new T.Vector3(),0);world.setSeaControlMode('deck');tick(60);
 ok('reset permits a fresh deck session',world.seaControlMode==='deck'&&deckClear(world.deckWalker.zone,captain.position.x,captain.position.z));
+// Standard third person: W follows the view after a quarter/half turn. Input
+// still reaches the real keyboard handler and the world's collision controller.
+for(const yaw of [Math.PI/2,Math.PI]){
+  world.orbit((world.deckCamera.yaw-yaw)/.006,0);tick(100);
+  const before=captain.position.clone();key('KeyW');tick(6);key('KeyW','keyup');tick(2);
+  const delta=captain.position.clone().sub(before),expected=new T.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  ok('W follows camera at '+Math.round(yaw*180/Math.PI)+' degrees',delta.dot(expected)>.15&&Math.abs(delta.x*expected.z-delta.z*expected.x)<.03,delta.toArray());
+  ok('orbit preserves deck and sails at '+Math.round(yaw*180/Math.PI)+' degrees',deckClear(world.deckWalker.zone,captain.position.x,captain.position.z)&&input.throttle===0&&input.rudder===0);
+}
+world.orbit(world.deckCamera.yaw/.006,0);tick(100);
 const wanted=new URLSearchParams(location.search).get('mode');if(wanted==='walk'){key('KeyD');tick(5);key('KeyD','keyup')}
 w.document.getElementById('banner').hidden=true;world.marker.visible=false;
 world.renderer.info.autoReset=false;world.renderer.info.reset();world.render();
@@ -64,7 +74,7 @@ if(new URLSearchParams(location.search).has('manual')){
   const clock=new T.Clock(),freeze=document.createElement('button');freeze.textContent='Freeze';freeze.style='position:fixed;right:0;top:24px';document.body.appendChild(freeze);
   freeze.onclick=()=>world.renderer.setAnimationLoop(null);
   world.renderer.info.autoReset=true;
-  world.renderer.setAnimationLoop(()=>{g.readInput();world.update(Math.min(clock.getDelta(),.05),input);world.render();document.body.dataset.manual=JSON.stringify({control:world.seaControlMode,position:captain.position.toArray(),throttle:input.throttle,rudder:input.rudder,motion:captain.userData.deckMotion});});
+  world.renderer.setAnimationLoop(()=>{g.readInput();world.update(Math.min(clock.getDelta(),.05),input);world.render();document.body.dataset.manual=JSON.stringify({control:world.seaControlMode,position:captain.position.toArray(),throttle:input.throttle,rudder:input.rudder,motion:captain.userData.deckMotion,cameraYaw:world.deckCamera?.lookYaw,actorYaw:captain.rotation.y});});
 }
 }catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
 </script></body></html>

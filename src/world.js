@@ -246,7 +246,8 @@ export class World {
     if (this.seaControlMode !== 'deck') return;
     if (!this.canDeckWalk() || this.ui.open || this.walkNavigation !== this.player.mesh.userData.navigation) { this.setSeaControlMode('helm'); return; }
     const walker = this.deckWalker, captain = this.crew.captain;
-    walker.update(dt, input.walkX ?? 0, input.walkZ ?? 0);
+    const move = this.deckCamera.movement(input.walkX ?? 0, input.walkZ ?? 0);
+    walker.update(dt, move.x, move.z);
     const p = walker.position; captain.position.set(p.x, p.y, p.z);
     const angle = Math.atan2(Math.sin(walker.facing - captain.rotation.y), Math.cos(walker.facing - captain.rotation.y));
     captain.rotation.y += angle * (1 - Math.exp(-dt * 14));

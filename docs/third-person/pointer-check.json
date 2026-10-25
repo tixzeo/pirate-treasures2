@@ -1,0 +1,49 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "orbitBefore": {
+    "control": "deck",
+    "position": [
+      -0.07890916445244708,
+      2.632727189497514,
+      -4.629454138794443
+    ],
+    "throttle": 0,
+    "rudder": 0,
+    "motion": "Idle",
+    "cameraYaw": 0,
+    "actorYaw": 6.283185266332876
+  },
+  "before": {
+    "control": "deck",
+    "position": [
+      -0.07890916445244708,
+      2.632727189497514,
+      -4.629454138794443
+    ],
+    "throttle": 0,
+    "rudder": 0,
+    "motion": "Idle",
+    "cameraYaw": -0.7499999999999994,
+    "actorYaw": 6.283185266332876
+  },
+  "after": {
+    "control": "deck",
+    "position": [
+      0.6376194328067836,
+      2.632727189497514,
+      -5.398594671275904
+    ],
+    "throttle": 0,
+    "rudder": 0,
+    "motion": "Idle",
+    "cameraYaw": -0.7499999999999994,
+    "actorYaw": 8.674721028056117
+  },
+  "delta": {
+    "x": 0.7165285972592307,
+    "z": -0.7691405324814617
+  }
+}
