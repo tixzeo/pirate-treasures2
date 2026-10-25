@@ -40,6 +40,7 @@ function view(name){
  world.player.pos.set(1800,0,1800);world.player.speed=0;world.player.heading=0;world.player.update(1/60,time);world.sea.update(time,world.player.pos);
  world.camera.position.copy(world.player.pos).add(new T.Vector3(14,15,34));world.camera.lookAt(world.player.pos.clone().add(new T.Vector3(-3,1,-32)));
  world.renderer.info.autoReset=false;world.renderer.info.reset();world.render();
+ if(world.renderer.info.programs.some(p=>p.diagnostics?.runnable===false))throw Error('A scene shader failed to compile');
  const stats={calls:world.renderer.info.render.calls,triangles:world.renderer.info.render.triangles,geometries:world.renderer.info.memory.geometries,textures:world.renderer.info.memory.textures};
  out.textContent='PASS '+results.length+' wave checks · '+current+' · t='+time;
  document.body.dataset.result=JSON.stringify({results,view:current,time,stats});

@@ -9,10 +9,10 @@ export const MAX_ISLES = 8, TRAIL = 28;
 
 // The detailed grid remains local and cheap. Two distant triangles continue the
 // sea underneath far-away islands, beyond the fully fogged edge of that grid.
-export function makeSeaBackdrop() {
+export function makeSeaBackdrop(material = new THREE.MeshBasicMaterial({color:'#bddde8',fog:false})) {
   const geometry = new THREE.PlaneGeometry(12000,12000);
   geometry.rotateX(-Math.PI/2);
-  const mesh = new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:'#06374f',fog:true}));
+  const mesh = new THREE.Mesh(geometry,material);
   mesh.position.y=-3; mesh.frustumCulled=false;
   return mesh;
 }
@@ -24,6 +24,8 @@ const vertex = /* glsl */`
   uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
   uniform float uAmp[4];
   uniform float uPhase[4];
+  uniform vec2 uSeaCenter;
+  uniform float uFarPlane;
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
@@ -31,11 +33,13 @@ const vertex = /* glsl */`
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vec2 base = w.xz;
+    vec2 gridOffset = abs(base-uSeaCenter);
+    float detail = (1.0-uFarPlane) * (1.0-smoothstep(${(SIZE * .34).toFixed(1)},${(SIZE * .48).toFixed(1)},max(gridOffset.x,gridOffset.y)));
     float h = 0.0;
     vec3 n = vec3(0.0, 1.0, 0.0);
     for (int i = 0; i < 4; i++) {
       vec2 d = uSwell[i].xy;
-      float k = uSwell[i].z, a = uAmp[i];
+      float k = uSwell[i].z, a = uAmp[i]*detail;
       vec3 packet = swellPacket(base, d, k, uTime, uPhase[i]);
       float ph = dot(base, d) * k + uTime * uSwell[i].w + uPhase[i];
       float s = sin(ph), c = cos(ph);
@@ -123,6 +127,8 @@ const fragment = /* glsl */`
   uniform sampler2D uCoastAtlas;
   uniform vec3 uCoastGrid[${MAX_ISLES}]; // local grid min x/z, cell metres (0 = legacy)
   uniform vec2 uCoastRot[${MAX_ISLES}]; // cos/sin of island yaw
+  uniform vec2 uSeaCenter;
+  uniform float uFarPlane;
   uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
   varying vec3 vWorld;
   varying vec3 vNormal;
@@ -182,6 +188,8 @@ const fragment = /* glsl */`
 
   void main() {
     vec2 p = vWorld.xz;
+    vec2 gridOffset = abs(p-uSeaCenter);
+    if(uFarPlane>0.5 && max(gridOffset.x,gridOffset.y)<${(SIZE * .47).toFixed(1)}) discard;
     float dist = length(cameraPosition - vWorld);
     float near = 1.0 - smoothstep(40.0, 230.0, dist);
     // Medium waves too short for the mesh: they only bend the light, with the same lean-in crests as the swell.
@@ -276,10 +284,10 @@ const fragment = /* glsl */`
 
 export class Sea {
   constructor(scene, sunDir) {
-    this.backdrop=makeSeaBackdrop(); scene.add(this.backdrop);
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
     geo.rotateX(-Math.PI / 2);
     const fog = scene.fog;
+    this.fog=fog;
     this.uniforms = {
       uTime: { value: 0 },
       uSwell: { value: SWELLS.map(s => new THREE.Vector4(s.dir[0], s.dir[1], s.k, s.speed)) },
@@ -311,10 +319,14 @@ export class Sea {
       uCoastAtlas: { value: new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1) },
       uCoastGrid: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector3()) },
       uCoastRot: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector2(1, 0)) },
+      uSeaCenter: { value: new THREE.Vector2() },
+      uFarPlane: { value: 0 },
       uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
     };
     this.uniforms.uRefl.value.needsUpdate = true;
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vertex, fragmentShader: fragment }));
+    this.backdrop=makeSeaBackdrop(new THREE.ShaderMaterial({ uniforms: {...this.uniforms,uFarPlane:{value:1}}, vertexShader:vertex, fragmentShader:fragment }));
+    scene.add(this.backdrop);
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
     this.trail = [];
@@ -382,6 +394,8 @@ export class Sea {
     this.uniforms.uWhite.value = (swell.k - 1) * 1.1;
     this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
     this.backdrop.position.set(this.mesh.position.x,-3,this.mesh.position.z);
+    this.uniforms.uSeaCenter.value.set(this.mesh.position.x,this.mesh.position.z);
+    this.uniforms.uFogNear.value=this.fog.near; this.uniforms.uFogFar.value=this.fog.far;
   }
 }
 
@@ -418,7 +432,7 @@ export function addSky(scene, renderer) {
   const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(72), THREE.MathUtils.degToRad(160));
   u.sunPosition.value.copy(sun);
   scene.add(sky);
-  scene.fog = new THREE.Fog('#b9dbe6', 110, 340);
+  scene.fog = new THREE.Fog('#b9dbe6', 180, 900);
 
   const hemi = new THREE.HemisphereLight('#d6ecff', '#1d5a6a', 1.25);
   scene.add(hemi);
