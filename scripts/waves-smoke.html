@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Wave packets checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;background:#10202ddd;color:white;pointer-events:none;font:12px monospace}nav{position:fixed;bottom:8px;left:8px;display:flex;gap:6px}button{padding:10px;background:#163642;color:white;border:1px solid #ccc;border-radius:6px}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><nav><button data-view="clear">Ясно</button><button data-view="storm">Шторм</button><button data-view="next">Следующий кадр</button></nav><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];let current='clear',time=18;
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const {world,input}=w.game;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js'),waves=await import('/src/waves.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);input.throttle=0;
+const uniforms={uSwell:world.sea.uniforms.uSwell,uAmp:world.sea.uniforms.uAmp,uPhase:world.sea.uniforms.uPhase,uProbe:{value:new T.Vector3()}};
+const material=new T.ShaderMaterial({uniforms,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:`
+uniform vec4 uSwell[4];uniform float uAmp[4];uniform float uPhase[4];uniform vec3 uProbe;
+${waves.PACKET_GLSL}
+void main(){float h=0.;for(int i=0;i<4;i++){vec4 s=uSwell[i];float a=swellPacket(uProbe.xy,s.xy,s.z,uProbe.z,uPhase[i]).x;h+=uAmp[i]*a*sin(dot(uProbe.xy,s.xy)*s.z+uProbe.z*s.w+uPhase[i]);}
+vec2 code=fract((h/6.+.5)*vec2(1.,255.));code.x-=code.y/255.;gl_FragColor=vec4(code,0.,1.);}`});
+// The renderer belongs to the iframe realm; its typed-array checks must receive
+// buffers from that realm too, rather than the parent test document's buffers.
+const geometry=new T.PlaneGeometry(2,2);
+for(const attribute of Object.values(geometry.attributes))attribute.array=new w.Float32Array(attribute.array);
+geometry.index.array=new w.Uint16Array(geometry.index.array);
+const scene=new T.Scene(),quad=new T.Mesh(geometry,material),camera=new T.Camera(),target=new T.WebGLRenderTarget(1,1),pixel=new w.Uint8Array(4);scene.add(quad);
+let maxError=0;const before=waves.swell.k;
+for(const gain of [1,1.9]){
+ waves.swell.k=gain;world.sea.update(0,world.player.pos);
+ // Parent and iframe load separate module instances; drive the test uniforms
+ // explicitly for both weather gains instead of changing only one instance.
+ world.sea.uniforms.uAmp.value=waves.SWELLS.map(s=>s.amp*gain);
+ for(let i=0;i<12;i++){
+  const x=Math.sin(i*1.3)*713,z=Math.cos(i*.7)*539,t=i*3.1;
+  uniforms.uProbe.value.set(x,z,t);world.renderer.setRenderTarget(target);world.renderer.render(scene,camera);world.renderer.readRenderTargetPixels(target,0,0,1,1,pixel);
+  const actual=(pixel[0]/255+pixel[1]/65025-.5)*6,expected=waves.waveHeight(x,z,t);maxError=Math.max(maxError,Math.abs(actual-expected));
+ }
+}
+world.renderer.setRenderTarget(null);waves.swell.k=before;target.dispose();quad.geometry.dispose();material.dispose();
+ok('CPU flotation and GPU packets agree in clear and storm water',maxError<.002,{maxError,samples:24});
+ok('wave variety adds no vertices',world.sea.mesh.geometry.attributes.position.count===221*221);
+function view(name){
+ if(name==='next')time+=1.5;else current=name;
+ world.atmo.auto=false;world.atmo.setTime(current==='storm'?19:13);world.atmo.setWeather(current==='storm'?'storm':'clear');
+ for(let i=0;i<900;i++)world.atmo.update(1/60,world.camera);
+ world.player.pos.set(1800,0,1800);world.player.speed=0;world.player.heading=0;world.player.update(1/60,time);world.sea.update(time,world.player.pos);
+ world.camera.position.copy(world.player.pos).add(new T.Vector3(14,15,34));world.camera.lookAt(world.player.pos.clone().add(new T.Vector3(-3,1,-32)));
+ world.renderer.info.autoReset=false;world.renderer.info.reset();world.render();
+ const stats={calls:world.renderer.info.render.calls,triangles:world.renderer.info.render.triangles,geometries:world.renderer.info.memory.geometries,textures:world.renderer.info.memory.textures};
+ out.textContent='PASS '+results.length+' wave checks · '+current+' · t='+time;
+ document.body.dataset.result=JSON.stringify({results,view:current,time,stats});
+}
+for(const button of document.querySelectorAll('nav button'))button.onclick=()=>view(button.dataset.view);
+w.addEventListener('resize',()=>requestAnimationFrame(()=>view(current)));view('clear');
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>

@@ -1,24 +1,8 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
-
-// A few long swells added together. Ships read waveHeight() to bob on the same waves the shader draws.
-const SWELLS = [
-  { dir: [1, .3], len: 38, amp: .55, speed: 1.1 },
-  { dir: [-.4, 1], len: 21, amp: .3, speed: 1.5 },
-  { dir: [.8, -.7], len: 11, amp: .14, speed: 2.2 },
-  { dir: [-1, -.2], len: 6.5, amp: .06, speed: 3.1 },
-];
-for (const s of SWELLS) { const l = Math.hypot(...s.dir); s.dir = [s.dir[0] / l, s.dir[1] / l]; s.k = Math.PI * 2 / s.len; }
-
-// Rough weather lifts every swell by this factor, in the mesh and in what ships ride on.
-export const swell = { k: 1 };
-
-export function waveHeight(x, z, t) {
-  let h = 0;
-  for (const s of SWELLS) h += s.amp * swell.k * Math.sin((x * s.dir[0] + z * s.dir[1]) * s.k + t * s.speed);
-  return h;
-}
+import { SWELLS, swell, PACKET_GLSL } from './waves.js';
+export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
 export const MAX_ISLES = 8, TRAIL = 28;
@@ -29,9 +13,11 @@ const vertex = /* glsl */`
   uniform float uTime;
   uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
   uniform float uAmp[4];
+  uniform float uPhase[4];
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
+  ${PACKET_GLSL}
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vec2 base = w.xz;
@@ -40,13 +26,14 @@ const vertex = /* glsl */`
     for (int i = 0; i < 4; i++) {
       vec2 d = uSwell[i].xy;
       float k = uSwell[i].z, a = uAmp[i];
-      float ph = dot(base, d) * k + uTime * uSwell[i].w;
+      vec3 packet = swellPacket(base, d, k, uTime, uPhase[i]);
+      float ph = dot(base, d) * k + uTime * uSwell[i].w + uPhase[i];
       float s = sin(ph), c = cos(ph);
-      h += a * s;
+      h += a * packet.x * s;
       // Gerstner: points slide toward the crest, so crests sharpen and troughs widen.
-      w.xz += ${CHOP.toFixed(2)} * a * d * c;
-      n.xz -= d * k * a * c;
-      n.y -= ${CHOP.toFixed(2)} * k * a * s;
+      w.xz += ${CHOP.toFixed(2)} * a * packet.x * d * c;
+      n.xz -= d * k * a * packet.x * c + packet.yz * a * s;
+      n.y -= ${CHOP.toFixed(2)} * k * a * packet.x * s;
     }
     w.y += h;
     vWorld = w.xyz;
@@ -252,6 +239,9 @@ const fragment = /* glsl */`
 
     // Foam on wave crests, at the shore, around the hulls and in the wakes.
     float crest = smoothstep(0.78 - uWhite * 0.35, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
+    // Breaking fronts have gaps and quiet patches; shore and ship foam retain
+    // their existing rules. No extra textures or water triangles are needed.
+    crest *= mix(0.25, 1.0, smoothstep(0.22, 0.72, noise(p * 0.033 + uTime * vec2(0.035,-0.018))));
     float wake = 0.0;
     for (int i = 0; i < ${TRAIL}; i++) {
       vec4 t = uTrail[i];
@@ -283,6 +273,7 @@ export class Sea {
       uTime: { value: 0 },
       uSwell: { value: SWELLS.map(s => new THREE.Vector4(s.dir[0], s.dir[1], s.k, s.speed)) },
       uAmp: { value: SWELLS.map(s => s.amp) },
+      uPhase: { value: SWELLS.map(s => s.phase) },
       uSunDir: { value: sunDir.clone().normalize() },
       uSunColor: { value: new THREE.Color('#fff2d0') },
       uDeep: { value: new THREE.Color('#06374f') },
