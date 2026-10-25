@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sea, addSky, addClouds, waveHeight } from './sea.js';
 import { buildShip, dressShip, Vessel } from './ship.js';
-import { buildIsland, dressIsland, buildMarker, buildPier, buildKitPier, buildBerth, PIER_WIDTH, PIER_LENGTH } from './island.js';
+import { buildIsland, dressIsland, buildMarker, buildPier, buildKitPier, buildBerth, PIER_WIDTH, PIER_LENGTH, DOCK_PITCH } from './island.js';
 import { kitReady } from './kit.js';
 import { ISLANDS, BOSS_HOME, SCENERY } from './islands.js';
 import { Effects } from './fx.js';
@@ -12,6 +12,7 @@ import { character } from './characters.js';
 import { sfx } from './sound.js';
 import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
+import { terrainPush } from './island-shape.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
@@ -106,7 +107,12 @@ export class World {
   // The berth lies alongside the pier, its outline sized to the player's ship.
   layBerth(isl) {
     const b = isl.userData.pier, u = this.player.mesh.userData;
-    b.berth = b.root.clone().addScaledVector(b.dir, PIER * .6).addScaledVector(b.side, PIER_WIDTH / 2 + u.width / 2 + SHIP_RULES.berthGap);
+    b.berth = b.root.clone().addScaledVector(b.dir, (b.length ?? PIER) * .6).addScaledVector(b.side, PIER_WIDTH / 2 + u.width / 2 + SHIP_RULES.berthGap);
+    if (isl.userData.terrain) {
+      // A real shoreline cannot be shrunk to make the berth fit. Move the berth
+      // outwards if necessary, then verify it remains alongside this pier.
+      for (let i = 0; i < 40 && terrainPush(b.berth, b.heading, u.metrics.coast, isl); i++) b.berth.addScaledVector(b.dir, .5);
+    }
     // The island keeps ships off its beach, but never so far out that the berth itself is blocked.
     const coast = u.metrics.coast;
     isl.userData.block = Math.min(isl.userData.shore + 3,
@@ -128,8 +134,10 @@ export class World {
       const { def, pier } = isl.userData;
       // Our pier starts a few metres up the sand from where the model's beach meets the sea.
       const coast = dressIsland(isl, def.kit, pier.dir);
-      if (coast) pier.root.copy(isl.position).addScaledVector(pier.dir, coast - 4);
-      const kitPier = buildKitPier(def.dock);
+      if (coast) pier.root.copy(isl.position).addScaledVector(pier.dir, coast - (isl.userData.terrain ? 1 : 4));
+      const segments = isl.userData.terrain ? 4 : 3;
+      pier.length = DOCK_PITCH * segments;
+      const kitPier = buildKitPier(def.dock, segments);
       kitPier.position.copy(pier.root);
       kitPier.rotation.copy(pier.mesh.rotation);
       this.scene.remove(pier.mesh);
@@ -137,8 +145,9 @@ export class World {
       pier.mesh = kitPier;
       this.layBerth(isl);
     }
-    const kinds = ['island_small_palm_cove', 'island_medium_lagoon', 'island_large_volcanic'];
-    SCENERY.forEach(([, , , seed], i) => dressIsland(this.scenery[i], kinds[seed % 3], null, seed));
+    const kinds = ['island_crescent_bay', 'island_jungle_ruins', 'island_fortress_rock'];
+    SCENERY.forEach(([, , , seed], i) => dressIsland(this.scenery[i], kinds[i % kinds.length], null, seed));
+    this.sea.setIslands([...this.isles, ...this.scenery]);
     this.life.build();
   }
 
@@ -373,7 +382,8 @@ export class World {
       for (const v of [p, this.boss]) {
         if (v.sinking >= 1) continue;
         const min = isl.userData.block || isl.userData.shore + 3;
-        const push = coastPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl.position, min);
+        const push = isl.userData.terrain ? terrainPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl) :
+          coastPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl.position, min);
         if (push) { v.pos.x += push.x; v.pos.z += push.z; v.speed *= .5; }
       }
     }
@@ -382,7 +392,7 @@ export class World {
       const b = isl.userData.pier;
       for (const v of [p, this.boss]) {
         if (v.sinking >= 1) continue;
-        const push = pierPush(v.pos, v.heading, v.mesh.userData, b, PIER, PIER_WIDTH);
+        const push = pierPush(v.pos, v.heading, v.mesh.userData, b, b.length ?? PIER, PIER_WIDTH);
         if (push) {
           v.pos.x += push.x; v.pos.z += push.z;
           if (v === p && Math.abs(v.speed) > 2 && this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }

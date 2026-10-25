@@ -4,14 +4,16 @@ import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { prepareMorskoy } from '../src/morskoy.js';
-import { fitShipLayout } from '../src/ship-layout.js';
-import { PLAYER_SHIP } from '../src/ship-config.js';
+import { boundsOf, fitShipLayout } from '../src/ship-layout.js';
+import { PLAYER_SHIP, MORSKOY_STERN } from '../src/ship-config.js';
 import { mergeStatic } from '../src/merge.js';
 
 const data = await readFile(new URL('../public/models/kit/morskoy_strannik_v2.glb', import.meta.url));
 const root = (await new GLTFLoader().parseAsync(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength), '')).scene;
 const triangles = object => object.getObjectsByProperty('isMesh', true).reduce((n, m) => n + (m.geometry.index?.count ?? m.geometry.attributes.position.count) / 3, 0);
-const beforeTriangles = triangles(root), beforeBounds = new THREE.Box3().setFromObject(root);
+const beforeTriangles = triangles(root);
+const beforeHull = boundsOf(root, n => /_CarvedHull$/.test(n));
+const beforeMasts = boundsOf(root, n => /^mast_[01]_main_/.test(n));
 prepareMorskoy(root);
 const layout = fitShipLayout(root.userData.shipParts, PLAYER_SHIP);
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-4, `${a} != ${b}`);
@@ -24,17 +26,36 @@ test('Morskoy is uniformly fitted to 32m with its original proportions', () => {
   assert.equal(PLAYER_SHIP.model, 'morskoy_strannik_v2');
 });
 
-test('preparation preserves the supplied geometry and binds stripes into nine sails', () => {
-  assert.equal(triangles(root), beforeTriangles);
-  const after = new THREE.Box3().setFromObject(root);
-  after.min.toArray().forEach((n, i) => near(n, beforeBounds.min.toArray()[i]));
-  after.max.toArray().forEach((n, i) => near(n, beforeBounds.max.toArray()[i]));
+test('stern correction preserves hull and main masts; nine sail groups stay intact', () => {
+  assert.equal(triangles(root), beforeTriangles + 64, 'only the new windowed back wall adds triangles');
+  for (const [testName, before] of [[n => /_CarvedHull$/.test(n), beforeHull], [n => /^mast_[01]_main_/.test(n), beforeMasts]]) {
+    const after = boundsOf(root, testName);
+    after.min.toArray().forEach((n, i) => near(n, before.min.toArray()[i]));
+    after.max.toArray().forEach((n, i) => near(n, before.max.toArray()[i]));
+  }
   const sails = root.getObjectsByProperty('type', 'Group').filter(o => /_Sail_\d+_\d+$/.test(o.name));
   assert.equal(sails.length, 9);
   for (const sail of sails) {
     assert.ok(sail.getObjectsByProperty('isMesh', true).length <= 2);
     assert.ok(sail.position.y > 0, 'pivot is at the yard, not the world origin');
   }
+});
+
+test('quarterdeck and helm fit a 1.75m captain; rear wall has three open windows', () => {
+  const main = layout.surfaces.find(s => s.kind === 'deck').bounds.max[1];
+  const quarter = layout.surfaces.find(s => s.kind === 'quarterdeck').bounds.max[1];
+  near(quarter - main, MORSKOY_STERN.rise);
+  const wheel = boundsOf(root, n => /^captains_wheel_rim_/.test(n));
+  const diameter = (wheel.max.x - wheel.min.x) * layout.scale.x;
+  assert.ok(diameter > 1.2 && diameter < 1.4, 'wheel is proportional to the captain');
+  const wall = root.getObjectByName('cabin_back_wall_0'); root.updateMatrixWorld(true);
+  const y = 1.81 + (2.98 - 1.81) * (2.4 / (2.4 * 32 / 22));
+  for (const x of [-1.2, 0, 1.2]) {
+    const ray = new THREE.Raycaster(new THREE.Vector3(x, y, 12), new THREE.Vector3(0, 0, -1), 0, 3);
+    assert.equal(ray.intersectObject(wall).length, 0, 'window aperture remains open');
+  }
+  const ray = new THREE.Raycaster(new THREE.Vector3(2, y, 12), new THREE.Vector3(0, 0, -1), 0, 3);
+  assert.ok(ray.intersectObject(wall).length, 'wooden wall closes the stern');
 });
 
 test('both four-gun broadsides retain contract markers, hidden from rendering', () => {

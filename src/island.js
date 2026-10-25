@@ -3,6 +3,7 @@ import { pbr } from './materials.js';
 import { part, hasKit } from './kit.js';
 import { flatten, mergeStatic } from './merge.js';
 import { ISLE_SCALE } from './islands.js';
+import { isIslandV3, fitIslandV3 } from './island-v3.js';
 
 const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .95, flatShading: true, ...extra });
 
@@ -104,6 +105,13 @@ export const PIER_WIDTH = 2 * DOCK_SCALE, PIER_LENGTH = 3 * DOCK_PITCH;
 const PROP = /^(PalmTree_\d+|RockCluster_\d+|Old_Lighthouse)/;
 export function dressIsland(isl, name, dir, seed = 1) {
   const src = part(name);
+  if (isIslandV3(name)) {
+    const fitted = fitIslandV3(src, isl.userData.shore, dir, seed, ISLE_SCALE);
+    for (const ch of isl.children) ch.visible = false;
+    isl.add(fitted.wrap); isl.userData.model = fitted.wrap;
+    isl.userData.terrain = fitted.terrain; isl.userData.kit = name;
+    return fitted.coast;
+  }
   src.updateMatrixWorld(true);
   const inv = src.matrixWorld.clone().invert();
   // Every part baked into the model's own space, sorted into ground, props (by the node they belong to) and dock.

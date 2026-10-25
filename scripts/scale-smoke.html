@@ -13,12 +13,17 @@ const THREE=await import('/node_modules/three/build/three.module.js');
 const {coastDistance,pierPush}=await import('/src/ship-collision.js');
 const {PLAYER_SHIP}=await import('/src/ship-config.js');
 const {PIER_LENGTH,PIER_WIDTH}=await import('/src/island.js');
+const {terrainClearance}=await import('/src/island-shape.js');
 w.document.getElementById('go').click(); input.throttle=0;
 world.renderer.setAnimationLoop(null); world.resetProgress();
 world.atmo.auto=false; world.atmo.setTime(13); world.atmo.setWeather('clear');
 const p=world.player, u=p.mesh.userData;
 const tick=(n=120,throttle=0)=>{for(let i=0;i<n;i++)world.update(1/60,{throttle,rudder:0})};
 const deck=u.navigation.surfaces.find(s=>s.kind==='deck').bounds;
+const allIslands=[...world.isles,...world.scenery];
+ok('six distinct V3 islands',allIslands.length===6&&new Set(allIslands.map(i=>i.userData.kit)).size===6,allIslands.map(i=>i.userData.kit));
+ok('physical shore fields installed',allIslands.every(i=>i.userData.terrain?.field.length===128*128));
+ok('sea uses physical shore atlas',world.sea.uniforms.uCoastAtlas.value.image.width===8*128&&world.sea.uniforms.uCoastGrid.value.slice(0,6).every(v=>v.z>0));
 ok('player hull and model',u.length===PLAYER_SHIP.length&&u.navigation.source===PLAYER_SHIP.model,{length:u.length,width:u.width,deck});
 ok('crew unscaled',world.crew.captain.userData.height===1.75,world.crew.captain.position.toArray());
 ok('captain at helm anchor',world.crew.captain.position.toArray().every((n,i)=>Math.abs(n-u.navigation.anchors.captain[i])<1e-5),world.crew.captain.position.toArray());
@@ -37,13 +42,13 @@ for(const isl of [...world.isles,...world.scenery]) {
 const shore=isl.userData.block||isl.userData.shore+3;
 p.pos.copy(isl.position).add(new THREE.Vector3(0,0,shore+u.length)); p.heading=0;p.speed=14;p.yaw=p.helm=0;
 tick(240,1);
-const clearance=coastDistance(p.pos,p.heading,u.metrics.coast.reach,isl.position).distance-shore-u.metrics.coast.radius;
+const clearance=isl.userData.terrain ? terrainClearance(p.pos,p.heading,u.metrics.coast,isl).distance : coastDistance(p.pos,p.heading,u.metrics.coast.reach,isl.position).distance-shore-u.metrics.coast.radius;
 ok('coast '+isl.position.x+','+isl.position.z,clearance>=-1e-5,clearance);
 }
 for(const isl of world.isles){
 const b=isl.userData.pier;
 p.pos.copy(b.berth).addScaledVector(b.side,-1);p.heading=b.heading;p.speed=p.yaw=p.helm=0;
-tick(); const push=pierPush(p.pos,p.heading,u,b,PIER_LENGTH,PIER_WIDTH);
+tick(); const push=pierPush(p.pos,p.heading,u,b,b.length??PIER_LENGTH,PIER_WIDTH);
 ok('pier '+isl.userData.def.name,!push,push);
 }
 world.teleport(new THREE.Vector3(0,0,0),0);tick();

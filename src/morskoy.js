@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { boundsOf } from './ship-layout.js';
 import { mergeStatic } from './merge.js';
+import { PLAYER_SHIP, MORSKOY_STERN } from './ship-config.js';
 
 const plain = b => ({ min: b.min.toArray(), max: b.max.toArray() });
 
@@ -73,9 +74,11 @@ function finishMaterials(root) {
   });
 }
 
-// Adapter for the original, byte-identical review asset. No edits to the boss or
+// Adapter for the original, byte-identical review file. No edits to the boss or
 // generic kit naming conventions; sail groups and physical metadata are built once.
 export function prepareMorskoy(root) {
+  fitStern(root);
+  addBackWall(root);
   root.updateMatrixWorld(true);
   const meshes = root.getObjectsByProperty('isMesh', true);
   const hull = boundsOf(root, n => /_CarvedHull$/.test(n));
@@ -87,7 +90,7 @@ export function prepareMorskoy(root) {
       name: n, kind: /Quarterdeck/.test(n) ? 'quarterdeck' : 'deck', bounds: plain(boundsOf(root, name => name === n)),
     });
     const step = /^quarterdeck_stairs_/.test(n);
-    const solid = /^(mast_\d+_main|mizzen_mast|cannon_carriages|cannon_barrel|cabin_side_wall|cabin_front_bulkhead|cabin_door_header|cabin_chart_table|cabin_chest|wheel_pedestal|capstan_base|capstan_handles|hatch_panels)_/.test(n);
+    const solid = /^(mast_\d+_main|mizzen_mast|cannon_carriages|cannon_barrel|cabin_side_wall|cabin_back_wall|cabin_front_bulkhead|cabin_door_header|cabin_chart_table|cabin_chest|wheel_pedestal|capstan_base|capstan_handles|hatch_panels)_/.test(n);
     if (!step && !solid) continue;
     const toRoot = new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld);
     components(mesh.geometry).forEach((indices, i) => {
@@ -102,7 +105,7 @@ export function prepareMorskoy(root) {
   root.userData.shipParts = {
     hull: plain(hull), surfaces, obstacles,
     anchors: {
-      captain: [wheel.x, quarterY, wheel.z + .85],
+      captain: [wheel.x, quarterY, wheel.z + MORSKOY_STERN.standGap / (PLAYER_SHIP.length / 22)],
       bosun: [-.85, deckY, -2.7],
       tim_cabin_boy: [-1, deckY, -8.2],
     },
@@ -146,4 +149,58 @@ export function prepareMorskoy(root) {
   finishMaterials(root);
   // Welding here shares canvas materials but retains one independently moving group.
   for (const { group } of sails) mergeStatic(group, /$a/);
+}
+
+// Lower the cabin/quarterdeck together, retaining headroom, connected stairs and
+// railings. Keep the hull, main deck and forward masts unchanged. The helm is a
+// separate uniformly resized assembly, so its round wheel stays round.
+function fitStern(root) {
+  const deck = boundsOf(root, n => /_Deck(?:_\d+)?$/.test(n)).max.y;
+  const quarter = boundsOf(root, n => /_Quarterdeck(?:_\d+)?$/.test(n)).max.y;
+  const scale = PLAYER_SHIP.length / 22, rise = MORSKOY_STERN.rise / scale;
+  const ratio = rise / (quarter - deck), drop = quarter - deck - rise;
+  const wheel = boundsOf(root, n => /^wheel_pedestal_/.test(n)).getCenter(new THREE.Vector3());
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const n = o.name, helm = /^(wheel_|captains_wheel_)/.test(n);
+    const cabin = /^(cabin_|stern_transom|stern_window|stern_compass|MorskoyStrannik_Quarterdeck|_Quarterdeck|quarterdeck_stairs|stair_stringers|stern_underdeck|stern_gallery|transom_)/.test(n);
+    const toRoot = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld), fromRoot = toRoot.clone().invert();
+    const geo = o.geometry = o.geometry.clone(), p = geo.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(toRoot);
+      if (helm) {
+        v.x = wheel.x + (v.x - wheel.x) * MORSKOY_STERN.helmScale;
+        v.z = wheel.z + (v.z - wheel.z) * MORSKOY_STERN.helmScale;
+        v.y = quarter - drop + (v.y - quarter) * MORSKOY_STERN.helmScale;
+      } else if (cabin) {
+        if (v.y > deck) v.y = v.y < quarter ? deck + (v.y - deck) * ratio : v.y - drop;
+      } else if (v.z >= 6.25 && v.y >= quarter - .05) v.y -= drop;
+      if (/^stern_(transom|window|compass)/.test(n)) v.z -= .4;
+      v.applyMatrix4(fromRoot); p.setXYZ(i, v.x, v.y, v.z);
+    }
+    p.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingBox(); geo.computeBoundingSphere();
+  });
+}
+
+function addBackWall(root) {
+  const windows = root.getObjectsByProperty('isMesh', true).find(o => /^stern_transom_glass_/.test(o.name));
+  const floor = boundsOf(root, n => /^cabin_floorboards_/.test(n)).max.y;
+  const roof = boundsOf(root, n => /_Quarterdeck(?:_\d+)?$/.test(n)).min.y;
+  const shape = new THREE.Shape();
+  shape.moveTo(-2.14, floor); shape.lineTo(2.14, floor); shape.lineTo(2.14, roof); shape.lineTo(-2.14, roof); shape.closePath();
+  for (const indices of components(windows.geometry)) {
+    const b = componentBox(windows, indices, windows.matrixWorld), hole = new THREE.Path();
+    hole.moveTo(b.min.x - .02, b.min.y - .02); hole.lineTo(b.max.x + .02, b.min.y - .02);
+    hole.lineTo(b.max.x + .02, b.max.y + .02); hole.lineTo(b.min.x - .02, b.max.y + .02); hole.closePath();
+    shape.holes.push(hole);
+  }
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: .10, bevelEnabled: false, curveSegments: 1 });
+  geometry.translate(0, 0, 10.47);
+  const colors = new Float32Array(geometry.attributes.position.count * 3);
+  for (let i = 0; i < colors.length; i += 3) colors.set([.43, .25, .13], i);
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const wall = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true }));
+  wall.name = 'cabin_back_wall_0'; root.add(wall);
 }
