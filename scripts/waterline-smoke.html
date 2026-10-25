@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Waterline checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;color:white;background:#10202ddd;pointer-events:none;font:12px monospace}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try {
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const {world}=w.game;await world.kitDone;const T=await import('/node_modules/three/build/three.module.js');
+const {waveHeight,swell}=await import('/src/sea.js');
+const {sampleHullWater}=await import('/src/hull-water.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.immortal=true;
+world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('storm');world.atmo.storm=1;world.atmo.update(0,world.camera);swell.k=1.9;
+const measurements=[]; let worst=null;
+for(const vessel of [world.player,world.boss]) {
+  const ship=vessel.mesh,u=ship.userData,points=[],seen=new Set();ship.updateWorldMatrix(true,true);
+  const inverse=ship.matrixWorld.clone().invert();
+  u.model.traverse(m=>{
+    if(!m.isMesh||!/_CarvedHull$/.test(m.name))return;
+    const p=m.geometry.attributes.position,matrix=inverse.clone().multiply(m.matrixWorld),v=new T.Vector3();
+    for(let i=0;i<p.count;i++){
+      v.fromBufferAttribute(p,i).applyMatrix4(matrix);if(v.y>-.4)continue;
+      const key=v.toArray().map(n=>Math.round(n*20)).join(',');if(!seen.has(key)){seen.add(key);points.push(v.clone());}
+    }
+  });
+  ok(`${u.length}m real submerged hull vertices captured`,points.length>20,{points:points.length});
+  for(const speed of [0,vessel.maxSpeed])for(const heading of [0,Math.PI/2,2.5]){
+    vessel.pos.set(2000,0,2000);vessel.heading=heading;vessel.speed=speed;vessel.throttle=speed/vessel.maxSpeed;vessel.rudder=0;vessel.yaw=0;vessel.heel=0;vessel.motion.ready=false;
+    let minImmersion=Infinity,maxLag=0,maxPitch=0,maxRoll=0,lastY=null,maxVerticalSpeed=0;
+    for(let i=0;i<3600;i++){
+      const time=i/60;vessel.update(1/60,time);ship.updateWorldMatrix(true,false);
+      const plane=sampleHullWater(waveHeight,{x:vessel.pos.x,z:vessel.pos.z,heading:vessel.heading,length:u.length,width:u.width},time);
+      maxLag=Math.max(maxLag,Math.abs(vessel.pos.y-plane.heave));maxPitch=Math.max(maxPitch,Math.abs(ship.rotation.x));maxRoll=Math.max(maxRoll,Math.abs(ship.rotation.z));
+      if(lastY!==null)maxVerticalSpeed=Math.max(maxVerticalSpeed,Math.abs(vessel.pos.y-lastY)*60);lastY=vessel.pos.y;
+      let deepest=-Infinity;
+      for(const p of points){const v=p.clone().applyMatrix4(ship.matrixWorld);deepest=Math.max(deepest,waveHeight(v.x,v.z,time)-v.y);}
+      if(deepest<minImmersion){minImmersion=deepest;if(vessel===world.player&&(!worst||deepest<worst.immersion))worst={position:vessel.pos.clone(),rotation:ship.rotation.clone(),time,immersion:deepest};}
+    }
+    const record={length:u.length,speed,heading,seconds:60,minImmersion,maxLag,maxPitch,maxRoll,maxVerticalSpeed};measurements.push(record);
+    ok(`${u.length}m, ${speed}m/s, heading ${heading.toFixed(2)}: no fully airborne hull or delayed heave`,minImmersion>0&&maxLag<1e-8&&maxPitch<=.10001&&maxRoll<=.16001,record);
+    await new Promise(r=>setTimeout(r,0));
+  }
+}
+const ship=world.player.mesh;ship.position.copy(worst.position);ship.rotation.copy(worst.rotation);ship.updateWorldMatrix(true,true);world.sea.update(worst.time,ship.position);
+world.camera.position.copy(ship.localToWorld(new T.Vector3(28,5,9)));world.camera.lookAt(ship.localToWorld(new T.Vector3(0,.2,0)));world.atmo.update(0,world.camera);
+const lightDir=world.atmo.keyDir.clone();lightDir.y=Math.max(lightDir.y,.2);lightDir.normalize();world.light.position.copy(ship.position).addScaledVector(lightDir,100);world.light.target.position.copy(ship.position);world.render();
+ok('storm waterline snapshot has valid shaders',world.renderer.info.programs.every(p=>p.diagnostics?.runnable!==false));
+out.textContent='PASS '+results.length+' waterline checks · 12 simulated minutes';document.body.dataset.result=JSON.stringify({results,measurements,worst:{time:worst.time,immersion:worst.immersion}});
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>

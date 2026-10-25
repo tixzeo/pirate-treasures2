@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
+import { sampleHullWater } from './hull-water.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -253,14 +254,9 @@ export class Vessel {
     this.pos.addScaledVector(this.forward(), this.speed * dt);
     this.heel += (-this.yaw * .3 - this.heel) * Math.min(1, dt * 2);
 
-    // Sample the waves at bow, stern and both sides for pitch and roll.
-    const f = this.forward(), r = this.side('right');
-    const len = this.mesh.userData.length * .4, wid = this.mesh.userData.width * .5;
-    const x = this.pos.x, z = this.pos.z;
-    const hb = waveHeight(x + f.x * len, z + f.z * len, t), hs = waveHeight(x - f.x * len, z - f.z * len, t);
-    const hr = waveHeight(x + r.x * wid, z + r.z * wid, t), hl = waveHeight(x - r.x * wid, z - r.z * wid, t);
-    const motion = this.motion.update(dt, { heave: (hb + hs + hr + hl) / 4 - .3,
-      pitch: Math.atan2(hb - hs, len * 2), roll: Math.atan2(hr - hl, wid * 2) * .8, heel: this.heel }, this.mesh.userData.length);
+    const water = sampleHullWater(waveHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
+      length: this.mesh.userData.length, width: this.mesh.userData.width }, t);
+    const motion = this.motion.update(dt, { ...water, heel: this.heel }, this.mesh.userData.length);
     // Sinking goes in stages: the hull settles and lists, then the bow lifts and the stern drags her under.
     const s = this.sinking, ss = THREE.MathUtils.smoothstep;
     const settle = ss(s, 0, .3) * 2.2, plunge = ss(s, .35, 1) ** 1.6 * 26;
