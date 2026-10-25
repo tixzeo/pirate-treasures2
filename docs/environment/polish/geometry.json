@@ -1,0 +1,171 @@
+{
+  "note": "One Node run; geometry and instance buffers only, not process/GPU memory or FPS. Uses already present kit props.",
+  "rows": [
+    {
+      "name": "island_cove_small",
+      "diameter": 293.25,
+      "meshes": 12,
+      "triangles": 32584,
+      "geometryBytes": 1150624,
+      "instanceBytes": 7360,
+      "foundation": {
+        "floor": -10.6762056350708,
+        "skirts": 216,
+        "caps": 3240,
+        "triangles": 3672,
+        "topTriangles": 3240
+      },
+      "extraProps": {
+        "palm": 45,
+        "rock": 31
+      },
+      "extraTriangles": 21860,
+      "fitMs": 176.51119999999997
+    },
+    {
+      "name": "island_lagoon",
+      "diameter": 345,
+      "meshes": 13,
+      "triangles": 37292,
+      "geometryBytes": 1497412,
+      "instanceBytes": 7104,
+      "foundation": {
+        "floor": -8.01657247543335,
+        "skirts": 216,
+        "caps": 3240,
+        "triangles": 3672,
+        "topTriangles": 3240
+      },
+      "extraProps": {
+        "hut": 2,
+        "palm": 42,
+        "rock": 32
+      },
+      "extraTriangles": 21946,
+      "fitMs": 232.37350000000004
+    },
+    {
+      "name": "island_volcanic",
+      "diameter": 379.49999999999994,
+      "meshes": 6,
+      "triangles": 15828,
+      "geometryBytes": 1071216,
+      "instanceBytes": 2048,
+      "foundation": {
+        "floor": -12.696660995483398,
+        "skirts": 328,
+        "caps": 4024,
+        "triangles": 4680,
+        "topTriangles": 4024
+      },
+      "extraProps": {
+        "rock": 32
+      },
+      "extraTriangles": 5440,
+      "fitMs": 139.6880000000001
+    },
+    {
+      "name": "island_crescent_bay",
+      "diameter": 206.99999999999997,
+      "meshes": 11,
+      "triangles": 23658,
+      "geometryBytes": 1162792,
+      "instanceBytes": 4224,
+      "foundation": {
+        "floor": -4.977504730224609,
+        "skirts": 544,
+        "caps": 3760,
+        "triangles": 4848,
+        "topTriangles": 3760
+      },
+      "extraProps": {
+        "hut": 2,
+        "palm": 26,
+        "rock": 15
+      },
+      "extraTriangles": 13234,
+      "fitMs": 215.12840000000006
+    },
+    {
+      "name": "island_jungle_ruins",
+      "diameter": 276,
+      "meshes": 14,
+      "triangles": 35286,
+      "geometryBytes": 1515916,
+      "instanceBytes": 6080,
+      "foundation": {
+        "floor": -7.673905849456787,
+        "skirts": 216,
+        "caps": 3240,
+        "triangles": 3672,
+        "topTriangles": 3240
+      },
+      "extraProps": {
+        "hut": 2,
+        "palm": 37,
+        "rock": 27
+      },
+      "extraTriangles": 21280,
+      "fitMs": 173.86149999999998
+    },
+    {
+      "name": "island_fortress_rock",
+      "diameter": 155.25,
+      "meshes": 10,
+      "triangles": 21174,
+      "geometryBytes": 1400320,
+      "instanceBytes": 2304,
+      "foundation": {
+        "floor": -5.002222061157227,
+        "skirts": 216,
+        "caps": 5160,
+        "triangles": 5592,
+        "topTriangles": 5160
+      },
+      "extraProps": {
+        "palm": 15,
+        "rock": 9
+      },
+      "extraTriangles": 8418,
+      "fitMs": 109.66259999999988
+    }
+  ],
+  "textures": [
+    {
+      "file": "public/textures/materials/dune_sand_basecolor.png",
+      "bytes": 118641,
+      "width": 512,
+      "height": 512
+    },
+    {
+      "file": "public/textures/materials/dune_sand_normal.png",
+      "bytes": 92987,
+      "width": 512,
+      "height": 512
+    },
+    {
+      "file": "public/textures/materials/swamp_moss_basecolor.png",
+      "bytes": 115717,
+      "width": 512,
+      "height": 512
+    },
+    {
+      "file": "public/textures/materials/swamp_moss_normal.png",
+      "bytes": 68324,
+      "width": 512,
+      "height": 512
+    },
+    {
+      "file": "public/textures/materials/ruin_stone_basecolor.png",
+      "bytes": 57702,
+      "width": 512,
+      "height": 512
+    },
+    {
+      "file": "public/textures/materials/ruin_stone_normal.png",
+      "bytes": 42870,
+      "width": 512,
+      "height": 512
+    }
+  ]
+}
