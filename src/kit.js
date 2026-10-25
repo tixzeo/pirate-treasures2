@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { detailKind, withDetail } from './detail.js';
 import { mergeStatic } from './merge.js';
+import { captureShipParts } from './ship-layout.js';
+export { boundsOf } from './ship-layout.js';
 
 // Артем's World Kit (public/models/kit): ships, islands, docks, props and match-3 pieces.
 // Y up, ship bows to -Z with the waterline at y = 0, docks run along +Z. Geometry is meshopt-compressed.
@@ -71,6 +73,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     if (kind) o.material = withDetail(o.material, kind);
   });
   // Static parts welded per material; what the game looks up by name or animates stays separate.
+  if (f === 'player_brigantine' || f === 'scar_karakatitsa') g.scene.userData.shipParts = captureShipParts(g.scene);
   if (!water && !/^(token|tile|island)_/.test(f)) mergeStatic(g.scene, KEEP); // islands weld once they are reshaped
   kit[f] = g.scene;
 }).catch(e => {
@@ -82,16 +85,3 @@ kitReady.catch(e => console.warn('World kit did not load', e));
 
 export const hasKit = name => !!kit[name];
 export const part = name => kit[name].clone(true);
-
-// Bounds of the named nodes of an object, in that object's own space.
-export function boundsOf(root, test) {
-  root.updateMatrixWorld(true);
-  const inv = root.matrixWorld.clone().invert();
-  const box = new THREE.Box3();
-  root.traverse(o => {
-    if (!o.isMesh || !test(o.name)) return;
-    o.geometry.computeBoundingBox();
-    box.union(o.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)));
-  });
-  return box;
-}
