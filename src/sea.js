@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
 import { SWELLS, swell, PACKET_GLSL } from './waves.js';
+import { WakeTrail, WAKE } from './wake.js';
 export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
-export const MAX_ISLES = 8, TRAIL = 28;
+export const MAX_ISLES = 8, TRAIL = WAKE.capacity;
 
 // The detailed grid remains local and cheap. Two distant triangles continue the
 // sea underneath far-away islands, beyond the fully fogged edge of that grid.
@@ -130,6 +131,7 @@ const fragment = /* glsl */`
   uniform vec2 uSeaCenter;
   uniform float uFarPlane;
   uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
+  uniform vec4 uTrailShape[${TRAIL}];  // direction x/z, strength, half length
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
@@ -167,23 +169,16 @@ const fragment = /* glsl */`
     return col + uSunColor * (pow(sun, 8.0) * 0.2 + pow(sun, 90.0) * 0.8);
   }
 
-  // Foam a ship pushes aside: a band around the hull, heaviest at the bow, and the two arms of the wake behind.
+  // Only the pressure band moves with the hull. Wake history stays in the sea.
   float shipFoam(vec2 p, vec4 ship, vec2 size) {
-    if (ship.w <= 0.05) return 0.0;
+    if (abs(ship.w) <= 1.0 || size.x <= 0.0 || size.y <= 0.0) return 0.0;
     vec2 f = vec2(-sin(ship.z), -cos(ship.z)), r = vec2(cos(ship.z), -sin(ship.z));
     vec2 d = p - ship.xy;
-    float u = dot(d, f), v = dot(d, r);
-    float pace = clamp(ship.w / 8.0, 0.0, 1.0);
+    float u = dot(d, f) * sign(ship.w), v = dot(d, r);
+    float pace = smoothstep(1.0, 10.0, abs(ship.w));
     float e = length(vec2(u / (size.x * 1.05), v / (size.y * 1.25)));
-    float hull = (1.0 - smoothstep(1.0, 1.25 + pace * 0.35, e)) * (0.45 + 0.55 * clamp(u / size.x * 0.8 + 0.3, 0.0, 1.0));
-    float behind = -u - size.x * 0.8;
-    float arm = 0.0;
-    if (behind > 0.0) {
-      float spread = behind * 0.36 + size.y * 0.8;
-      arm = 1.0 - smoothstep(0.0, 0.9 + behind * 0.04, abs(abs(v) - spread));
-      arm *= 1.0 - smoothstep(0.0, 70.0 * pace + 5.0, behind);
-    }
-    return clamp(hull + arm * 0.8, 0.0, 1.0) * (0.25 + 0.75 * pace);
+    float hull = 1.0 - smoothstep(0.04, 0.3, abs(e - 1.0));
+    return hull * smoothstep(-0.25, 0.9, u / size.x) * pace;
   }
 
   void main() {
@@ -264,22 +259,29 @@ const fragment = /* glsl */`
 
     // Foam on wave crests, at the shore, around the hulls and in the wakes.
     float crest = smoothstep(0.78 - uWhite * 0.35, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
-    // Breaking fronts have gaps and quiet patches; shore and ship foam retain
-    // their existing rules. No extra textures or water triangles are needed.
+    // Breaking fronts have gaps and quiet patches.
     crest *= mix(0.25, 1.0, smoothstep(0.22, 0.72, noise(p * 0.033 + uTime * vec2(0.035,-0.018))));
     float wake = 0.0;
     for (int i = 0; i < ${TRAIL}; i++) {
       vec4 t = uTrail[i];
       if (t.w <= 0.0) continue;
-      float d = length(p - t.xy);
-      float w = t.w * (0.5 + t.z * 1.6);
-      wake = max(wake, (1.0 - smoothstep(w * 0.4, w, d)) * (1.0 - t.z));
+      vec4 shape = uTrailShape[i];
+      vec2 off = p - t.xy;
+      float along = dot(off, shape.xy), across = dot(off, vec2(-shape.y,shape.x));
+      float width = t.w * (0.7 + t.z * 1.1), extent = shape.w + t.z * 2.0;
+      if (abs(along) > extent || abs(across) > width * 1.2) continue;
+      // A small meander breaks the outline; no noise or texture lookup per patch.
+      across += sin(along * 0.8 + dot(t.xy,vec2(1.7,2.3))) * width * 0.15;
+      float deposit = 1.0 - smoothstep(0.05, 1.0, length(vec2(along/extent,across/width)));
+      wake = max(wake, deposit * pow(1.0-t.z,1.6) * shape.z);
     }
     float ships = max(shipFoam(p, uShips[0], uShipSize[0]), shipFoam(p, uShips[1], uShipSize[1]));
-    // Foam is lace, not paint: the more of it there is, the more of the pattern fills in.
+    // Texture coverage stays porous even when hull, wake and surf overlap.
     float lace = texture2D(uFoam, p * 0.11 + uTime * vec2(0.012, 0.004)).a * 0.65 + texture2D(uFoam, p * 0.27 - uTime * vec2(0.006, 0.015)).a * 0.35;
-    float amount = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7 + ships, 0.0, 1.0);
-    float foam = amount * smoothstep(0.12, 0.5, lace + amount * 0.45);
+    float breakup = smoothstep(0.23,0.72,noise(p * 0.19 + uTime * vec2(0.018,-0.011)));
+    float grain = smoothstep(0.22,0.8,lace);
+    float shipFoamAmount = max(wake * 0.72, ships * 0.7) * mix(0.25,1.0,breakup);
+    float foam = max(max(crest * 0.48, surf * 0.64),shipFoamAmount) * grain;
     col = mix(col, vec3(0.95, 0.98, 1.0) * (0.2 + 0.8 * uLight), foam);
 
     col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
@@ -329,6 +331,7 @@ export class Sea {
       uSeaCenter: { value: new THREE.Vector2() },
       uFarPlane: { value: 0 },
       uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
+      uTrailShape: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
     };
     this.uniforms.uRefl.value.needsUpdate = true;
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vertex, fragmentShader: fragment }));
@@ -336,8 +339,7 @@ export class Sea {
     scene.add(this.backdrop);
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
-    this.trail = [];
-    this.trailT = 0;
+    this.wakes = new WakeTrail();
     // Артем's ripple normal map and foam pattern take over from the generated stand-ins once they are in.
     const tex = new THREE.TextureLoader(), base = import.meta.env ? import.meta.env.BASE_URL : './';
     tex.load(`${base}textures/sea/sea_ripple_normal_1024.png`, t => {
@@ -371,26 +373,18 @@ export class Sea {
 
   // Ships leave a fading line of foam behind them.
   addWake(dt, ships) {
-    ships.slice(0, 2).forEach((s, i) => {
-      const live = s.sinking < .3 && s.mesh.parent;
-      this.uniforms.uShips.value[i].set(s.pos.x, s.pos.z, s.heading, live ? Math.abs(s.speed) : 0);
-      this.uniforms.uShipSize.value[i].set(s.mesh.userData.length / 2, s.mesh.userData.width / 2);
-    });
-    this.trailT -= dt;
-    if (this.trailT <= 0) {
-      this.trailT = .09;
-      for (const s of ships) {
-        if (Math.abs(s.speed) < 1 || s.sinking >= 1) continue;
-        const back = s.forward().multiplyScalar(-s.mesh.userData.length * .45);
-        this.trail.push({ x: s.pos.x + back.x, z: s.pos.z + back.z, age: 0, w: s.mesh.userData.width * .55 * Math.min(1, Math.abs(s.speed) / 8) });
-      }
+    const sources = ships.slice(0,2).map(s => ({ id:s, x:s.pos.x, z:s.pos.z, heading:s.heading, speed:s.speed,
+      length:s.mesh.userData.length, width:s.mesh.userData.width, active:s.sinking < .3 && !!s.mesh.parent }));
+    for (let i=0;i<2;i++) {
+      const s=sources[i];
+      this.uniforms.uShips.value[i].set(s?.x??0,s?.z??0,s?.heading??0,s?.active?s.speed:0);
+      this.uniforms.uShipSize.value[i].set(s?.length/2||0,s?.width/2||0);
     }
-    for (const t of this.trail) t.age += dt / 3.2;
-    this.trail = this.trail.filter(t => t.age < 1).slice(-TRAIL);
-    const u = this.uniforms.uTrail.value;
+    const trail = this.wakes.update(dt,sources), u = this.uniforms.uTrail.value, shape = this.uniforms.uTrailShape.value;
     for (let i = 0; i < TRAIL; i++) {
-      const t = this.trail[i];
-      if (t) u[i].set(t.x, t.z, t.age, t.w); else u[i].set(0, 0, 0, 0);
+      const t = trail[i];
+      if (t) { u[i].set(t.x,t.z,t.age,t.width); shape[i].set(t.fx,t.fz,t.strength,t.extent); }
+      else { u[i].set(0,0,0,0); shape[i].set(0,0,0,0); }
     }
   }
 
