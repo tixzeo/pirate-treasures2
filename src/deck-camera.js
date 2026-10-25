@@ -25,7 +25,8 @@ export function cameraLimit(from, to, boxes) {
 }
 
 export class DeckCamera {
-  constructor() { this.yaw = 0; this.pitch = .38; this.distance = 4.2; this.local = null; this.focus = null; }
+  constructor(view = {}) { this.yaw = view.yaw ?? 0; this.pitch = view.pitch ?? .38; this.distance = view.distance ?? 4.2; this.local = null; this.focus = null; }
+  view() { return { yaw: this.yaw, pitch: this.pitch, distance: this.distance }; }
   orbit(dx, dy) { this.yaw -= dx * .006; this.pitch = THREE.MathUtils.clamp(this.pitch + dy * .004, .12, 1.05); }
   zoom(delta) { this.distance = THREE.MathUtils.clamp(this.distance * Math.exp(delta * .001), 2.2, 6); }
   movement(x, z) { return cameraRelativeMove(x, z, this.lookYaw ?? this.yaw); }

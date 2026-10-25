@@ -45,3 +45,12 @@ test('camera-relative movement still respects the same collision zone',()=>{
   for(let i=0;i<120;i++){rig.update(1/60,camera,ship,walker,navigation);const move=rig.movement(0,-1);walker.update(1/60,move.x,move.z);}
   assert.ok(walker.position.x<-.8&&walker.position.x>=-1.08-1e-6);assert.ok(deckClear(walker.zone,walker.position.x,walker.position.z));
 });
+
+test('deck view survives leaving and entering with a fresh target', () => {
+  const first = new DeckCamera(); first.orbit(170, -25); first.zoom(180);
+  const second = new DeckCamera(first.view());
+  second.update(1/60, new THREE.PerspectiveCamera(), new THREE.Group(), { position: { x: 2, y: 3, z: -4 } }, nav);
+  assert.deepEqual(second.view(), first.view());
+  assert.deepEqual(second.focus.toArray(), [2, 4.1, -4]);
+  near(second.azimuth, first.yaw);
+});

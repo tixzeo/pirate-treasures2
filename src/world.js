@@ -228,11 +228,12 @@ export class World {
       const walker = new DeckWalker(makeDeckZone(navigation, crew), this.walkNavigation === navigation ? this.lastDeckPosition : null);
       if (!walker.position) return false;
       this.walkNavigation = navigation; this.deckWalker = walker;
-      this.deckCamera = new DeckCamera();
+      this.deckCamera = new DeckCamera(this.deckView);
       this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
       this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
       this.crew.captain.rotation.y = walker.facing;
     } else if (mode === 'helm') {
+      this.deckView = this.deckCamera?.view();
       this.lastDeckPosition = this.deckWalker?.position && { ...this.deckWalker.position };
       if (this.crew.captain) this.board(this.player, this.crew.captain, 0, 0, true);
       this.captainMotion(false);
