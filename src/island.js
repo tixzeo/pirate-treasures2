@@ -106,7 +106,10 @@ const PROP = /^(PalmTree_\d+|RockCluster_\d+|Old_Lighthouse)/;
 export function dressIsland(isl, name, dir, seed = 1) {
   const src = part(name);
   if (isIslandV3(name)) {
-    const fitted = fitIslandV3(src, isl.userData.shore, dir, seed, ISLE_SCALE);
+    const fitted = fitIslandV3(src, isl.userData.shore, dir, seed, ISLE_SCALE, {
+      palm: hasKit('palm_tree') ? part('palm_tree') : null,
+      rock: hasKit('rock_cluster') ? part('rock_cluster') : null,
+    });
     for (const ch of isl.children) ch.visible = false;
     isl.add(fitted.wrap); isl.userData.model = fitted.wrap;
     isl.userData.terrain = fitted.terrain; isl.userData.kit = name;

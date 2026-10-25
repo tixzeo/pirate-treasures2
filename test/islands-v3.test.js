@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three';
 import { ISLANDS, SCENERY, BOSS_HOME, VOYAGE_SPACING, ISLE_SCALE } from '../src/islands.js';
 import { ISLAND_V3, prepareIslandV3, fitIslandV3 } from '../src/island-v3.js';
@@ -24,7 +25,9 @@ test('all six real V3 assets fit, with finite coast fields and bounded mesh coun
     const land = fit.terrain.field.filter(v => v < 0).length;
     assert.ok(land > 1000 && land < fit.terrain.field.length - 1000, name);
     signatures.add(land);
-    assert.ok(fit.wrap.getObjectsByProperty('isMesh', true).length <= 7, 'static details are welded; one opaque foundation is added');
+    const meshes=fit.wrap.getObjectsByProperty('isMesh',true);
+    assert.ok(meshes.filter(m=>!m.isInstancedMesh).length<=7,'static details are welded; one opaque foundation is added');
+    assert.ok(meshes.filter(m=>m.isInstancedMesh).length<=10,'scatter uses bounded material batches');
   }
   assert.equal(signatures.size, 6, 'shore shapes are not six scaled copies');
 });
@@ -161,6 +164,43 @@ test('real closed pools have opaque flat water and no ocean or foam inside', () 
 test('voyage has six islands, preserving all three story levels', () => {
   assert.equal(ISLANDS.length, 3); assert.equal(SCENERY.length, 3);
   assert.deepEqual(ISLANDS.map(i => i.level.moves), [20, 20, 22]);
+});
+
+test('scattered props are deterministic, grounded, budgeted and leave a landing corridor', async () => {
+  for(const [name,{terrain:s,wrap}] of islands){
+    assert.ok(s.scatter.triangles<=s.scatter.budget,name);
+    const instanced=wrap.getObjectsByProperty('isInstancedMesh',true);
+    assert.equal(instanced.length,s.scatter.batches.length);
+    for(const p of s.scatter.props){
+      assert.ok(shoreDistance(s,p.position[0],p.position[2])<-3);
+      assert.ok(Math.abs(p.position[1]+p.burial-p.groundY)<1e-6,'no hovering bases');
+      assert.ok(Math.hypot(p.position[0],p.position[2])>=12,'centre stays clear');
+      const [dx,dz]=s.scatter.corridor.direction,x=p.position[0],z=p.position[2];
+      assert.ok(x*dx+z*dz<=0||Math.abs(x*dz-z*dx)>=6,'landing corridor stays clear');
+    }
+    for(const mesh of instanced){
+      const matrix=new THREE.Matrix4();
+      for(let i=0;i<mesh.count;i++){
+        mesh.getMatrixAt(i,matrix);const pos=new THREE.Vector3().setFromMatrixPosition(matrix);
+        assert.ok(s.scatter.props.some(p=>pos.distanceTo(new THREE.Vector3(...p.position))<1e-4),'rendered instance matches grounded metadata');
+      }
+    }
+  }
+  const b=await readFile(new URL('../public/models/islands/island_cove_small.glb',import.meta.url));
+  const {scene}=await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');prepareIslandV3(scene);
+  const first=fitIslandV3(scene,165,new THREE.Vector3(1,0,0),42,7.5),again=fitIslandV3(scene,165,new THREE.Vector3(1,0,0),42,7.5);
+  assert.deepEqual(first.terrain.scatter,again.terrain.scatter);
+  assert.ok(first.terrain.scatter.props.filter(p=>p.kind==='palm').length>=30,'large cove has groves, not five isolated trees');
+  assert.ok(first.terrain.scatter.props.some(p=>p.kind==='rock'));
+  const library={};
+  for(const [kind,name] of [['palm','palm_tree'],['rock','rock_cluster']]){
+    const data=await readFile(new URL(`../public/models/kit/${name}.glb`,import.meta.url));
+    library[kind]=(await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength),'')).scene;
+  }
+  const detailed=fitIslandV3(scene,165,new THREE.Vector3(1,0,0),42,7.5,library);
+  assert.ok(detailed.terrain.scatter.props.some(p=>p.source==='Library_palm_0'));
+  assert.ok(detailed.terrain.scatter.props.some(p=>p.source==='Library_rock_0'));
+  assert.ok(detailed.terrain.scatter.triangles<=24000);
 });
 
 test('voyage legs grow threefold without changing ship speed or quest identities', () => {

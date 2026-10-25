@@ -4,6 +4,7 @@ import { flatten, mergeStatic } from './merge.js';
 import { makeIslandShape, shoreDistance } from './island-shape.js';
 import { groundProbe, groundedAnchor } from './island-ground.js';
 import { makeIslandFoundation } from './island-solid.js';
+import { scatterIslandProps, scatterSources } from './island-scatter.js';
 
 export const ISLAND_V3 = ['island_cove_small', 'island_lagoon', 'island_volcanic', 'island_crescent_bay', 'island_jungle_ruins', 'island_fortress_rock'];
 export const isIslandV3 = name => ISLAND_V3.includes(name);
@@ -66,7 +67,7 @@ function propKey(name) {
 
 // Terrain and props have separate scale. Every prop is planted on the fitted
 // physical terrain, rather than stretching its old Y coordinate with the hills.
-export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
+export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5, library = {}) {
   const native = boundsOf(src, n => TERRAIN.test(n));
   if (native.isEmpty()) throw new Error('V3 island is missing terrain');
   const centre = native.getCenter(new THREE.Vector3()), size = native.getSize(new THREE.Vector3());
@@ -144,6 +145,7 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
   }
   model.traverse(o => { if (o.isMesh) { o.castShadow = !/island_v3_(water|foundation)/.test(o.material.name); o.receiveShadow = true; } });
   mergeStatic(model, /(?!)/);
+  terrain.scatter = scatterIslandProps(model,scatterSources(props,library),terrain,probe,shore,nativeDir,seed);
   const wrap = new THREE.Group(); wrap.add(model);
   wrap.rotation.y = dir ? Math.atan2(dir.x, dir.z) - Math.atan2(nativeDir.x, nativeDir.z) : seed * 2.39;
   terrain.yaw = wrap.rotation.y;
