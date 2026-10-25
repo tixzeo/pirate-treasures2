@@ -6,6 +6,7 @@ import { mergeStatic } from './merge.js';
 import { captureShipParts } from './ship-layout.js';
 import { PLAYER_SHIP } from './ship-config.js';
 import { prepareMorskoy } from './morskoy.js';
+import { prepareMorskoyV6 } from './morskoy-v6.js';
 import { ISLAND_V3, isIslandV3, prepareIslandV3 } from './island-v3.js';
 export { boundsOf } from './ship-layout.js';
 
@@ -41,9 +42,9 @@ export const kit = {};
 export const glows = [];
 export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}models/${path.includes('/') ? path : 'kit/' + path}.glb`).then(g => {
   const f = path.split('/').pop(), water = path.startsWith('water/');
-  const morskoy = f === 'morskoy_strannik_v2';
+  const v6 = f === 'morskoy_strannik_v6', morskoy = v6 || f === 'morskoy_strannik_v2';
   const islandV3 = isIslandV3(f);
-  if (morskoy) prepareMorskoy(g.scene);
+  if (v6) prepareMorskoyV6(g.scene); else if (morskoy) prepareMorskoy(g.scene);
   if (islandV3) prepareIslandV3(g.scene);
   const seen = new Set();
   g.scene.traverse(o => {
@@ -78,7 +79,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     o.material.envMapIntensity = .45; // the board's room reflections otherwise wash flat tops out to white
     if (/Sail|Flag|Wing|Fin|Canvas/.test(o.name)) o.material.side = THREE.DoubleSide;
     // Wood grain, sailcloth, sand and stone from the texture pack; the match-3 pieces stay clean.
-    const kind = !islandV3 && !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
+    const kind = !v6 && !islandV3 && !/^(token|tile)_/.test(f) && detailKind(`${o.name} ${o.material.name}`);
     if (kind) o.material = withDetail(o.material, kind);
   });
   // Static parts welded per material; what the game looks up by name or animates stays separate.

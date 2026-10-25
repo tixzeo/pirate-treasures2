@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><title>V6 brig checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;color:white;background:#10202ddd;pointer-events:none;font:12px monospace}nav{position:fixed;bottom:20px;left:20px}button{padding:10px}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><nav><button id="sea">Море</button><button id="deck">Палуба</button><button id="stern">Корма</button><button id="storm">Шторм</button></nav><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try {
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const {world,input}=w.game;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.immortal=true;
+world.teleport(new T.Vector3(2000,0,2000),0);input.throttle=0;world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
+const tick=(n=1)=>{for(let i=0;i<n;i++){w.game.readInput();world.update(1/60,input)}};
+tick();const ship=world.player.mesh,u=ship.userData;
+ok('V6 brig loaded',u.navigation.source==='morskoy_strannik_v6',u.navigation.source);
+const mapped=u.model.getObjectsByProperty('isMesh',true).filter(m=>m.material.map), images=new Set();
+for(const m of mapped)for(const map of [m.material.map,m.material.normalMap])if(map)images.add(map.image);
+ok('all 16 embedded images decoded',images.size===16&&[...images].every(i=>i.width===512&&i.height===512),{images:images.size,mappedMeshes:mapped.length});
+ok('PBR UV maps retained',mapped.length>=15&&mapped.every(m=>m.geometry.attributes.uv&&m.material.normalMap));
+ok('both four-gun broadsides',u.muzzles.left.length===4&&u.muzzles.right.length===4);
+ok('nine moving sails',u.sway.filter(s=>/_Sail_/.test(s.name)).length===9);
+ok('boss retains own 15m class',world.boss.mesh.userData.length===15&&world.boss.mesh.userData.navigation.source!=='morskoy_strannik_v6');
+ok('deck entry',world.setSeaControlMode('deck'));tick(60);
+ok('captain on measured floor',Math.abs(world.crew.captain.position.y-u.deckY)<.01&&world.deckWalker.position!==null);
+const boss=world.crew.bosun,entry=world.crewOcclusion.figures.find(e=>e.figure===boss),saved=boss.position.clone();
+const captain=world.deckWalker.position;boss.position.set(captain.x,captain.y,captain.z+1.5);
+world.crewOcclusion.update(new T.Vector3(captain.x,captain.y+1.2,captain.z+4),captain);
+ok('moving crew fades',entry.meshes.length>0&&[...entry.materials.values()].every(m=>m.opacity<=.18));
+boss.position.x+=5;world.crewOcclusion.update(new T.Vector3(captain.x,captain.y+1.2,captain.z+4),captain);
+ok('moving crew restores opacity', [...entry.materials.values()].every(m=>m.opacity===1));boss.position.copy(saved);world.setSeaControlMode('helm');
+const show=mode=>{world.setSeaControlMode('helm');world.atmo.setWeather(mode==='storm'?'storm':'clear');tick(120);
+if(mode==='deck'){world.setSeaControlMode('deck');tick(60)}else if(mode==='stern'){
+world.camera.position.copy(ship.localToWorld(new T.Vector3(8,9,24)));world.camera.lookAt(ship.localToWorld(new T.Vector3(0,4.5,11)));}
+world.render();out.textContent='PASS '+results.length+' V6 checks — '+mode;};
+document.getElementById('sea').onclick=()=>show('sea');document.getElementById('deck').onclick=()=>show('deck');document.getElementById('stern').onclick=()=>show('stern');document.getElementById('storm').onclick=()=>show('storm');
+show('sea');const gl=world.renderer.getContext();ok('WebGL has no error',gl.getError()===gl.NO_ERROR);ok('all shader programs runnable',world.renderer.info.programs.every(p=>p.diagnostics?.runnable!==false));
+document.body.dataset.result=JSON.stringify({results,geometry:{meshes:u.model.getObjectsByProperty('isMesh',true).length,width:u.width,deckY:u.deckY,helm:u.model.userData.helm}});out.textContent='PASS '+results.length+' V6 checks';
+w.addEventListener('resize',()=>requestAnimationFrame(()=>{world.updateCamera(1);world.render()}));
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>

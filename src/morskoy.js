@@ -79,6 +79,13 @@ function finishMaterials(root) {
 export function prepareMorskoy(root) {
   fitStern(root);
   addBackWall(root);
+  captureMorskoyLayout(root, { standGap: MORSKOY_STERN.standGap / (PLAYER_SHIP.length / 22) });
+  const sails = groupMorskoySails(root);
+  finishMaterials(root);
+  for (const { group } of sails) mergeStatic(group, /$a/);
+}
+
+export function captureMorskoyLayout(root, { standGap = .7, extraSolids = /$a/, anchors } = {}) {
   root.updateMatrixWorld(true);
   const meshes = root.getObjectsByProperty('isMesh', true);
   const hull = boundsOf(root, n => /_CarvedHull$/.test(n));
@@ -91,7 +98,7 @@ export function prepareMorskoy(root) {
       outline: deckOutline(root, mesh),
     });
     const step = /^quarterdeck_stairs_/.test(n);
-    const solid = /^(mast_\d+_main|mizzen_mast|cannon_carriages|cannon_barrel|cabin_side_wall|cabin_back_wall|cabin_front_bulkhead|cabin_door_header|cabin_chart_table|cabin_chest|wheel_pedestal|capstan_base|capstan_handles|hatch_panels)_/.test(n);
+    const solid = /^(mast_\d+_main|mizzen_mast|cannon_carriages|cannon_barrel|cabin_side_wall|cabin_back_wall|cabin_front_bulkhead|cabin_door_header|cabin_chart_table|cabin_chest|wheel_pedestal|capstan_base|capstan_handles|hatch_panels)_/.test(n) || extraSolids.test(n);
     if (!step && !solid) continue;
     const toRoot = new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld);
     components(mesh.geometry).forEach((indices, i) => {
@@ -114,12 +121,17 @@ export function prepareMorskoy(root) {
   root.userData.shipParts = {
     hull: plain(hull), surfaces, obstacles,
     anchors: {
-      captain: [wheel.x, quarterY, wheel.z + MORSKOY_STERN.standGap / (PLAYER_SHIP.length / 22)],
+      captain: [wheel.x, quarterY, wheel.z + standGap],
       bosun: [-.85, deckY, -2.7],
       tim_cabin_boy: [-1, deckY, -8.2],
+      ...anchors,
     },
   };
+}
 
+export function groupMorskoySails(root) {
+  root.updateMatrixWorld(true);
+  const meshes = root.getObjectsByProperty('isMesh', true);
   // Keep each striped canvas intact and give it a yard-height pivot. One welded
   // mesh per sail, rather than independently moving each of its eight stripes.
   const groups = new Map();
@@ -155,9 +167,7 @@ export function prepareMorskoy(root) {
     group.position.copy(pivot);
     children.forEach(child => group.attach(child));
   }
-  finishMaterials(root);
-  // Welding here shares canvas materials but retains one independently moving group.
-  for (const { group } of sails) mergeStatic(group, /$a/);
+  return sails;
 }
 
 // Lower the cabin/quarterdeck together, retaining headroom, connected stairs and

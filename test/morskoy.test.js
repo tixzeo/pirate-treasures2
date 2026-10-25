@@ -23,7 +23,7 @@ test('Morskoy is uniformly fitted to 32m with its original proportions', () => {
   near(layout.scale.x, 32 / 22); near(layout.scale.y, layout.scale.x); near(layout.scale.z, layout.scale.x);
   const deck = layout.surfaces.find(s => s.kind === 'deck').bounds;
   near(deck.max[0] - deck.min[0], 4.661 * 32 / 22);
-  assert.equal(PLAYER_SHIP.model, 'morskoy_strannik_v2');
+  assert.equal(PLAYER_SHIP.length, 32); // the V2 adapter remains a regression fixture
 });
 
 test('stern correction preserves hull and main masts; nine sail groups stay intact', () => {
