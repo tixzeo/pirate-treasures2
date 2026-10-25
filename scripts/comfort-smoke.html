@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Ship comfort checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;color:white;background:#10202ddd;pointer-events:none;font:12px monospace}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try {
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const g=w.game,{world,input}=g;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.immortal=true;
+world.teleport(new T.Vector3(),0);input.throttle=0;world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
+const tick=(n=1)=>{for(let i=0;i<n;i++){g.readInput();world.update(1/60,input)}};
+tick();ok('deck entry',world.setSeaControlMode('deck'));tick(60);
+world.orbit(140,-20);world.zoom(120);tick(120);const view=world.deckCamera.view();
+world.setSeaControlMode('helm');world.setSeaControlMode('deck');tick();
+ok('reentry preserves yaw pitch and distance',JSON.stringify(world.deckCamera.view())===JSON.stringify(view),view);
+const captain=world.crew.captain,bosun=world.crew.bosun,entry=world.crewOcclusion.figures.find(e=>e.figure===bosun);
+ok('actual crew has measured bounds',entry&&entry.bounds.max.every(Number.isFinite)&&entry.bounds.max[1]-entry.bounds.min[1]>1,entry?.bounds);
+// Position the camera behind the actual bosun from the captain. Include the feet,
+// which can be hidden even when the centre/head ray misses the mate's body.
+const center=new T.Vector3().fromArray(entry.bounds.min).add(new T.Vector3().fromArray(entry.bounds.max)).multiplyScalar(.5);
+const eye=center.clone().sub(new T.Vector3(captain.position.x,captain.position.y+.9,captain.position.z)).multiplyScalar(1.7).add(new T.Vector3(captain.position.x,captain.position.y+.9,captain.position.z));
+world.crewOcclusion.update(eye,captain.position);
+ok('foreground bosun fades',entry.meshes.length>0&&[...entry.materials.values()].every(m=>m.opacity<=.18));
+world.setSeaControlMode('helm');ok('helm restores original crew materials',entry.meshes.length===0&&entry.materials.size===0);
+world.teleport(new T.Vector3(2000,0,2000),0);input.throttle=1;world.atmo.setWeather('storm');let maxPitch=0,maxRoll=0;
+for(let i=0;i<1800;i++){tick();maxPitch=Math.max(maxPitch,Math.abs(world.player.mesh.rotation.x));maxRoll=Math.max(maxRoll,Math.abs(world.player.mesh.rotation.z));}
+ok('storm under full sail keeps bounded smooth hull pose',world.player.speed>13&&maxPitch<=.10001&&maxRoll<=.16001,{maxPitch,maxRoll,speed:world.player.speed});
+world.teleport(new T.Vector3(),0);input.throttle=0;world.atmo.setWeather('clear');world.setSeaControlMode('deck');tick(120);world.render();
+const keys=w.document.querySelector('.keys'),css=w.getComputedStyle(keys);ok('keyboard hint has a dark backing',css.backgroundColor!=='rgba(0, 0, 0, 0)'&&css.color==='rgb(255, 245, 223)',{background:css.backgroundColor,color:css.color});
+out.textContent='PASS '+results.length+' comfort checks';document.body.dataset.result=JSON.stringify({results});
+w.addEventListener('resize',()=>requestAnimationFrame(()=>{world.updateCamera(1);world.render()}));
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>
