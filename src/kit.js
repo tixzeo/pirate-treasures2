@@ -7,6 +7,7 @@ import { captureShipParts } from './ship-layout.js';
 import { PLAYER_SHIP } from './ship-config.js';
 import { prepareMorskoy } from './morskoy.js';
 import { ISLAND_V3, isIslandV3, prepareIslandV3 } from './island-v3.js';
+import { prepareWaterModel } from './water-models.js';
 export { boundsOf } from './ship-layout.js';
 
 // Артем's World Kit (public/models/kit): ships, islands, docks, props and match-3 pieces.
@@ -45,6 +46,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
   const islandV3 = isIslandV3(f);
   if (morskoy) prepareMorskoy(g.scene);
   if (islandV3) prepareIslandV3(g.scene);
+  if (water) prepareWaterModel(g.scene, f);
   const seen = new Set();
   g.scene.traverse(o => {
     if (!o.isMesh) return;
