@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as THREE from 'three';
-import { ISLANDS, SCENERY } from '../src/islands.js';
+import { ISLANDS, SCENERY, BOSS_HOME, VOYAGE_SPACING } from '../src/islands.js';
 import { ISLAND_V3, prepareIslandV3, fitIslandV3 } from '../src/island-v3.js';
 import { shoreDistance, terrainPush, terrainClearance, coastAtlas, closedBasins, COAST_SIZE, COAST_RANGE } from '../src/island-shape.js';
 
@@ -121,4 +121,16 @@ test('real closed pools have opaque flat water and no ocean or foam inside', () 
 test('voyage has six islands, preserving all three story levels', () => {
   assert.equal(ISLANDS.length, 3); assert.equal(SCENERY.length, 3);
   assert.deepEqual(ISLANDS.map(i => i.level.moves), [20, 20, 22]);
+});
+
+test('voyage legs grow threefold without changing ship speed or quest identities', () => {
+  assert.equal(VOYAGE_SPACING,3);
+  const baseline=[[0,0],[30,-190],[-150,-360],[110,-520],[320,-470]];
+  const actual=[{x:0,z:0},...ISLANDS,BOSS_HOME];
+  for(let i=1;i<actual.length;i++){
+    const metres=Math.hypot(actual[i].x-actual[i-1].x,actual[i].z-actual[i-1].z);
+    const previous=Math.hypot(baseline[i][0]-baseline[i-1][0],baseline[i][1]-baseline[i-1][1]);
+    assert.ok(Math.abs(metres/previous-3)<1e-8);
+  }
+  assert.deepEqual(ISLANDS.map(d=>d.name),['Остров Креста','Бухта Попугая','Остров Черепа']);
 });
