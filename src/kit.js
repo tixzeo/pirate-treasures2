@@ -4,6 +4,8 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { detailKind, withDetail } from './detail.js';
 import { mergeStatic } from './merge.js';
 import { captureShipParts } from './ship-layout.js';
+import { PLAYER_SHIP } from './ship-config.js';
+import { prepareMorskoy } from './morskoy.js';
 export { boundsOf } from './ship-layout.js';
 
 // Артем's World Kit (public/models/kit): ships, islands, docks, props and match-3 pieces.
@@ -13,7 +15,7 @@ const base = import.meta.env ? import.meta.env.BASE_URL : './';
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 
 const FILES = [
-  'player_brigantine', 'scar_karakatitsa',
+  PLAYER_SHIP.model, 'scar_karakatitsa',
   'island_small_palm_cove', 'island_medium_lagoon', 'island_large_volcanic',
   'dock_pine', 'dock_royal', 'dock_ruined', 'palm_tree', 'rock_cluster',
   'tile_base', 'token_ruby', 'token_emerald', 'token_compass', 'token_seashell', 'token_doubloon',
@@ -38,6 +40,8 @@ export const kit = {};
 export const glows = [];
 export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}models/${path.includes('/') ? path : 'kit/' + path}.glb`).then(g => {
   const f = path.split('/').pop(), water = path.startsWith('water/');
+  const morskoy = f === 'morskoy_strannik_v2';
+  if (morskoy) prepareMorskoy(g.scene);
   const seen = new Set();
   g.scene.traverse(o => {
     if (!o.isMesh) return;
@@ -53,7 +57,9 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
       }
       col.needsUpdate = true;
     }
-    if (water) {
+    if (morskoy) {
+      // The adapter assigns shared materials by surface type before kit detailing.
+    } else if (water) {
       if (!WATER_METAL.test(o.material.name)) o.material.metalness = 0;
     } else {
       const metal = METAL.test(o.name) || f === 'token_doubloon';
@@ -62,7 +68,7 @@ export const kitReady = Promise.all(FILES.map(path => loader.loadAsync(`${base}m
     }
     // Lamps and lit windows: they glow after dark (the atmosphere raises their intensity as the light fails).
     if (/window|lantern|warm buoy light/i.test(o.material.name) && !glows.some(g => g.mat === o.material)) {
-      o.material.emissive = o.material.color.clone();
+      o.material.emissive = new THREE.Color(o.material.userData.glowColor ?? o.material.color);
       o.material.emissiveIntensity = .4;
       glows.push({ mat: o.material, k: /lantern|buoy/i.test(o.material.name) ? 1.2 : .8 });
     }

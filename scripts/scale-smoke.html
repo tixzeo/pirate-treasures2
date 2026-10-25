@@ -11,16 +11,17 @@ await world.kitDone;
 while(!world.crew.captain) await new Promise(r=>setTimeout(r,50));
 const THREE=await import('/node_modules/three/build/three.module.js');
 const {coastDistance,pierPush}=await import('/src/ship-collision.js');
+const {PLAYER_SHIP}=await import('/src/ship-config.js');
+const {PIER_LENGTH,PIER_WIDTH}=await import('/src/island.js');
 w.document.getElementById('go').click(); input.throttle=0;
 world.renderer.setAnimationLoop(null); world.resetProgress();
 world.atmo.auto=false; world.atmo.setTime(13); world.atmo.setWeather('clear');
 const p=world.player, u=p.mesh.userData;
 const tick=(n=120,throttle=0)=>{for(let i=0;i<n;i++)world.update(1/60,{throttle,rudder:0})};
 const deck=u.navigation.surfaces.find(s=>s.kind==='deck').bounds;
-ok('22m hull, 4.4m deck',u.length===22&&Math.abs(deck.max[0]-deck.min[0]-4.4)<1e-5,{length:u.length,width:u.width,deck});
+ok('player hull and model',u.length===PLAYER_SHIP.length&&u.navigation.source===PLAYER_SHIP.model,{length:u.length,width:u.width,deck});
 ok('crew unscaled',world.crew.captain.userData.height===1.75,world.crew.captain.position.toArray());
-const cabin=u.navigation.obstacles.find(s=>/CaptainCabin/.test(s.name)).bounds;
-ok('captain in front of cabin',world.crew.captain.position.z<cabin.min[2]-.3,world.crew.captain.position.toArray());
+ok('captain at helm anchor',world.crew.captain.position.toArray().every((n,i)=>Math.abs(n-u.navigation.anchors.captain[i])<1e-5),world.crew.captain.position.toArray());
 for(const [side,guns] of Object.entries(u.muzzles)) {
 ok('four guns '+side,guns.length===4,guns.length);
 for(const m of guns)ok('gun outside hull '+side,Math.abs(m.position.x)>u.width/2,m.position.toArray());
@@ -34,7 +35,7 @@ world.moor(isl);
 }
 for(const isl of [...world.isles,...world.scenery]) {
 const shore=isl.userData.block||isl.userData.shore+3;
-p.pos.copy(isl.position).add(new THREE.Vector3(0,0,shore+22)); p.heading=0;p.speed=14;p.yaw=p.helm=0;
+p.pos.copy(isl.position).add(new THREE.Vector3(0,0,shore+u.length)); p.heading=0;p.speed=14;p.yaw=p.helm=0;
 tick(240,1);
 const clearance=coastDistance(p.pos,p.heading,u.metrics.coast.reach,isl.position).distance-shore-u.metrics.coast.radius;
 ok('coast '+isl.position.x+','+isl.position.z,clearance>=-1e-5,clearance);
@@ -42,7 +43,7 @@ ok('coast '+isl.position.x+','+isl.position.z,clearance>=-1e-5,clearance);
 for(const isl of world.isles){
 const b=isl.userData.pier;
 p.pos.copy(b.berth).addScaledVector(b.side,-1);p.heading=b.heading;p.speed=p.yaw=p.helm=0;
-tick(); const push=pierPush(p.pos,p.heading,u,b,28.8,4.8);
+tick(); const push=pierPush(p.pos,p.heading,u,b,PIER_LENGTH,PIER_WIDTH);
 ok('pier '+isl.userData.def.name,!push,push);
 }
 world.teleport(new THREE.Vector3(0,0,0),0);tick();
@@ -51,7 +52,7 @@ world.fire('left');world.fire('right');tick(60);
 ok('eight broadside shots',shots===8,shots);
 const ballAt=(ship,local,owner)=>({owner,m:{position:ship.mesh.localToWorld(new THREE.Vector3(...local))}});
 ok('hit in scaled hull',world.hits(ballAt(p,[0,3,0],world.boss),p));
-ok('miss above hull',!world.hits(ballAt(p,[0,10,0],world.boss),p));
+ok('miss above hull',!world.hits(ballAt(p,[0,u.metrics.hit.maxY+1,0],world.boss),p));
 const hp=p.hp;world.onBall(ballAt(p,[0,1,0],world.boss));ok('player damage',p.hp===hp-5,p.hp);
 world.teleport(world.boss.pos,65);world.startBattle();tick(120);
 ok('battle active and camera finite',world.state==='battle'&&world.camera.position.toArray().every(Number.isFinite),world.camera.position.toArray());

@@ -198,7 +198,7 @@ export function dressShip(g, name) {
     model, sway, muzzles: muzzles.left.length ? muzzles : u.muzzles, sails: [], flag: null,
     width: layout.hull.max[0] - layout.hull.min[0],
     deckY: deck.max[1],
-    castle: { y: quarter.max[1], z: helmZ },
+    castle: { y: quarter.max[1], z: layout.anchors.captain?.[2] ?? helmZ },
     navigation: { ...layout, source: name },
   });
   u.metrics = shipMetrics(u);
