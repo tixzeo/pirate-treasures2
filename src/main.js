@@ -122,6 +122,7 @@ function clearControlInput() {
   stickId = dragId = null; stickX = stickY = 0; knobRest();
 }
 world.onControlMode = () => { clearControlInput(); ui.deckHud(world.seaControlMode, world.canDeckWalk()); };
+world.onRepair = () => { clearControlInput(); setSails(1); };
 function toggleDeck() {
   if (mode !== 'sea' || ui.open) return;
   if (!world.setSeaControlMode(world.seaControlMode === 'deck' ? 'helm' : 'deck')) ui.flash('Палуба пока недоступна');
