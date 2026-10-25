@@ -7,6 +7,8 @@ export const ISLAND_V3 = ['island_cove_small', 'island_lagoon', 'island_volcanic
 export const isIslandV3 = name => ISLAND_V3.includes(name);
 const TERRAIN = /(?:submerged_rock_rim|sand_and_grass|shore_shelf|kidney_terrain|basalt_shore|outer_black_sand|crater_cone|curved_terrain|outer_rock_wall|inner_rock_wall|headland_\d+|basal_cliffs|_terrain|jagged_rock_shelf|base_terrain|crag_\d+)$/;
 const PIER = /_pier_|_landing_/;
+const STILL_WATER = /spring$|inner_pool$|cenote$/;
+export const POND_LEVEL = .12;
 
 export function prepareIslandV3(root) {
   const materials = new Map();
@@ -21,7 +23,8 @@ export function prepareIslandV3(root) {
       // The supplied cone faces inward, and several terrain fans mix winding.
       // Two-sided opaque ground keeps the authored surface visible from above.
       if (type === 'ground' || type === 'foliage' || type === 'water') mat.side = THREE.DoubleSide;
-      if (type === 'water') { mat.transparent = true; mat.opacity = .8; mat.depthWrite = false; }
+      if (type === 'water') { mat.transparent = false; mat.opacity = 1; mat.depthWrite = true;
+        mat.vertexColors = false; mat.color.set('#347d78'); mat.roughness = .4; }
       if (type === 'lava') { mat.emissive.set('#fa4a04'); mat.emissiveIntensity = .6; }
       materials.set(type, mat);
     }
@@ -48,7 +51,7 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
   const centre = native.getCenter(new THREE.Vector3()), size = native.getSize(new THREE.Vector3());
   const scale = shore / (Math.max(size.x, size.z) / 2), vertical = scale / Math.sqrt(isleScale), propScale = Math.min(2, scale / isleScale);
   src.updateMatrixWorld(true); const inv = src.matrixWorld.clone().invert();
-  const model = new THREE.Group(), ground = [], props = new Map(), piers = [], dock = new THREE.Box3();
+  const model = new THREE.Group(), ground = [], props = new Map(), piers = [], still = [], dock = new THREE.Box3();
   src.traverse(o => {
     if (!o.isMesh) return;
     const geo = flatten(o, inv), m = new THREE.Mesh(geo, o.material); m.name = o.name;
@@ -56,6 +59,10 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
     const key = propKey(o.name);
     if (key) { if (!props.has(key)) props.set(key, []); props.get(key).push(m); return; }
     geo.translate(-centre.x, 0, -centre.z).scale(scale, vertical, scale).translate(0, .35, 0);
+    if (STILL_WATER.test(o.name)) { geo.computeBoundingBox(); still.push({ bounds: geo.boundingBox.clone(), material: m.material }); geo.dispose(); return; }
+    // This authored flat disk lies inside a bay open to the sea. The ocean alone
+    // renders that bay; overlapping flat surfaces made its triangles visible.
+    if (/inner_lagoon$/.test(o.name)) { geo.dispose(); return; }
     model.add(m); if (TERRAIN.test(o.name)) ground.push(m);
   });
   for (const list of props.values()) {
@@ -73,6 +80,27 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5) {
     }
   }
   const terrain = makeIslandShape(ground);
+  const ponds = [];
+  for (const basin of terrain.basins) {
+    const cells = basin.map(i => ({ x: terrain.minX + (i % terrain.size + .5) * terrain.cell,
+      z: terrain.minZ + (Math.floor(i / terrain.size) + .5) * terrain.cell }));
+    const source = still.find(s => cells.some(p => p.x >= s.bounds.min.x && p.x <= s.bounds.max.x && p.z >= s.bounds.min.z && p.z <= s.bounds.max.z));
+    if (!source) continue;
+    const selected = new Set(basin);
+    for (const i of basin) for (const n of [i - 1, i + 1, i - terrain.size, i + terrain.size]) if (n >= 0 && n < terrain.size ** 2) selected.add(n);
+    const positions = [], indices = [];
+    for (const i of selected) {
+      const x = terrain.minX + (i % terrain.size) * terrain.cell, z = terrain.minZ + Math.floor(i / terrain.size) * terrain.cell, c = terrain.cell, at = positions.length / 3;
+      positions.push(x,POND_LEVEL,z, x+c,POND_LEVEL,z, x+c,POND_LEVEL,z+c, x,POND_LEVEL,z+c);
+      indices.push(at,at+2,at+1, at,at+3,at+2);
+    }
+    const geometry = new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    geometry.setIndex(indices); geometry.computeVertexNormals();
+    const pond = new THREE.Mesh(geometry,source.material); pond.name = 'Still_inland_water'; model.add(pond);
+    ponds.push({ cellCount: basin.length, center: [cells.reduce((a,p)=>a+p.x,0)/cells.length, POND_LEVEL, cells.reduce((a,p)=>a+p.z,0)/cells.length] });
+  }
+  if (still.length && !ponds.length) throw new Error('Authored inland water has no enclosed terrain basin');
+  terrain.ponds = ponds; delete terrain.basins;
   const nativeDir = dock.isEmpty() ? new THREE.Vector3(0, 0, 1) : dock.getCenter(new THREE.Vector3()).sub(centre).setY(0).normalize();
   let coast = 0;
   for (let r = terrain.radius; r >= 0; r -= .25) if (shoreDistance(terrain, nativeDir.x * r, nativeDir.z * r) < 0) { coast = r; break; }

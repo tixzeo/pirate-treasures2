@@ -5,7 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as THREE from 'three';
 import { ISLANDS, SCENERY } from '../src/islands.js';
 import { ISLAND_V3, prepareIslandV3, fitIslandV3 } from '../src/island-v3.js';
-import { shoreDistance, terrainPush, terrainClearance, coastAtlas, COAST_SIZE, COAST_RANGE } from '../src/island-shape.js';
+import { shoreDistance, terrainPush, terrainClearance, coastAtlas, closedBasins, COAST_SIZE, COAST_RANGE } from '../src/island-shape.js';
 
 const islands = new Map();
 for (const name of ISLAND_V3) {
@@ -69,16 +69,38 @@ test('inward-facing volcano is opaque and visible from above', () => {
   assert.ok(ray.intersectObjects(ground)[0]?.point.y > 4, 'cone, rather than the sand underneath, occludes the sea');
 });
 
-test('water atlas shares all six collision fields with millimetre precision and no slot bleed', () => {
+test('water atlas shares outer shore fields with millimetre precision and no slot bleed', () => {
   const shapes = [...islands.values()].map(f => f.terrain);
   const { data, width, height } = coastAtlas(shapes, 8);
   assert.equal(width, 8 * COAST_SIZE); assert.equal(height, COAST_SIZE);
   for (let slot = 0; slot < 8; slot++) for (let z = 0; z < height; z++) for (let x = 0; x < COAST_SIZE; x++) {
     const i = (z * width + slot * COAST_SIZE + x) * 4;
     const decoded = (data[i] * 256 + data[i + 1]) / 65535 * 2 * COAST_RANGE - COAST_RANGE;
-    const expected = shapes[slot] ? Math.max(-COAST_RANGE, Math.min(COAST_RANGE, shapes[slot].field[z * COAST_SIZE + x])) : COAST_RANGE;
+    const expected = shapes[slot] ? Math.max(-COAST_RANGE, Math.min(COAST_RANGE, shapes[slot].oceanField[z * COAST_SIZE + x])) : COAST_RANGE;
     assert.ok(Math.abs(decoded - expected) < .0011);
   }
+});
+
+test('closed water is isolated but a narrow open channel still reaches the ocean', () => {
+  const n=9,mask=new Uint8Array(n*n);
+  for(let z=2;z<=6;z++)for(let x=2;x<=6;x++)mask[z*n+x]=x===2||x===6||z===2||z===6?1:0;
+  assert.deepEqual(closedBasins(mask,n).map(b=>b.length),[9]);
+  mask[4*n+2]=0;assert.equal(closedBasins(mask,n).length,0);
+});
+
+test('real closed pools have opaque flat water and no ocean or foam inside', () => {
+  for(const name of ['island_cove_small','island_lagoon','island_jungle_ruins']) {
+    const fit=islands.get(name),s=fit.terrain;
+    assert.ok(s.ponds.length>0,name);
+    for(let i=0;i<s.closedWater.length;i++)if(s.closedWater[i]) {
+      assert.ok(s.field[i]>0, 'collision field still describes the physical terrain');
+      assert.ok(s.oceanField[i]<0, 'ocean shader masks the entire closed basin');
+    }
+    const water=fit.wrap.getObjectsByProperty('isMesh',true).filter(m=>m.material.name==='island_v3_water');
+    assert.ok(water.length);for(const mesh of water){assert.equal(mesh.material.transparent,false);assert.equal(mesh.material.depthWrite,true);assert.equal(mesh.material.vertexColors,false);}
+  }
+  const bay=islands.get('island_crescent_bay').terrain;
+  assert.ok(shoreDistance({...bay,field:bay.oceanField},0,0)>8);
 });
 
 test('voyage has six islands, preserving all three story levels', () => {

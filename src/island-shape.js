@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const COAST_SIZE = 128, COAST_RANGE = 64;
+export const COAST_SIZE = 256, COAST_RANGE = 64;
 
 // RG stores a signed distance in metres with 16-bit precision. One small atlas
 // shares the collision shoreline with the water shader, including open bays.
@@ -10,7 +10,7 @@ export function coastAtlas(shapes, slots) {
     const shape = shapes[slot];
     if (shape && shape.size !== size) throw new Error('Unexpected coast field size');
     for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
-      const d = shape ? shape.field[z * size + x] : COAST_RANGE;
+      const d = shape ? (shape.oceanField ?? shape.field)[z * size + x] : COAST_RANGE;
       const code = Math.round(Math.max(0, Math.min(1, (d + COAST_RANGE) / (2 * COAST_RANGE))) * 65535);
       const i = (z * width + slot * size + x) * 4;
       data[i] = code >> 8; data[i + 1] = code & 255; data[i + 3] = 255;
@@ -20,7 +20,7 @@ export function coastAtlas(shapes, slots) {
 }
 
 // Rasterise only physical terrain, clipped at the waterline. Pools, foliage and
-// buildings are deliberately excluded by the asset adapter. The 128² field keeps
+// buildings are deliberately excluded by the asset adapter. The 256² field keeps
 // open bays open, unlike the former enclosing-circle collision.
 export function makeIslandShape(meshes, size = COAST_SIZE) {
   const bounds = new THREE.Box3();
@@ -54,8 +54,8 @@ export function makeIslandShape(meshes, size = COAST_SIZE) {
       for (let j = 1; j + 1 < clipped.length; j++) triangle(clipped[0], clipped[j], clipped[j + 1]);
     }
   }
-  const distance = seed => {
-    const d = Float32Array.from(mask, n => n === seed ? 0 : 1e6), diag = Math.SQRT2;
+  const distance = (source, seed) => {
+    const d = Float32Array.from(source, n => n === seed ? 0 : 1e6), diag = Math.SQRT2;
     for (let z = 1; z < size - 1; z++) for (let x = 1; x < size - 1; x++) {
       const i = z * size + x;
       d[i] = Math.min(d[i], d[i - 1] + 1, d[i - size] + 1, d[i - size - 1] + diag, d[i - size + 1] + diag);
@@ -66,12 +66,40 @@ export function makeIslandShape(meshes, size = COAST_SIZE) {
     }
     return d;
   };
-  const land = distance(1), water = distance(0);
-  const field = Float32Array.from(mask, (n, i) => (n ? .5 - water[i] : land[i] - .5) * cell);
-  // Boundary cells are padded water; extend the nearest interior values smoothly.
-  for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) if (!x || !z || x === size - 1 || z === size - 1)
-    field[z * size + x] = field[Math.max(1, Math.min(size - 2, z)) * size + Math.max(1, Math.min(size - 2, x))] + cell;
-  return { size, cell, minX, minZ, field, yaw: 0, radius: cell * size * .72 };
+  const signed = source => {
+    const land = distance(source, 1), water = distance(source, 0);
+    const field = Float32Array.from(source, (n, i) => (n ? .5 - water[i] : land[i] - .5) * cell);
+    // Boundary cells are padded water; extend nearest interior values smoothly.
+    for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) if (!x || !z || x === size - 1 || z === size - 1)
+      field[z * size + x] = field[Math.max(1, Math.min(size - 2, z)) * size + Math.max(1, Math.min(size - 2, x))] + cell;
+    return field;
+  };
+  const basins = closedBasins(mask, size), closedWater = new Uint8Array(mask.length);
+  for (const basin of basins) for (const i of basin) closedWater[i] = 1;
+  // Ocean sees only the outer shoreline. Still inland water is rendered by its
+  // own opaque surface, with no ocean crests, wakes or surf inside the basin.
+  const oceanMask = Uint8Array.from(mask, (n, i) => n || closedWater[i] ? 1 : 0);
+  return { size, cell, minX, minZ, field: signed(mask), oceanField: signed(oceanMask),
+    closedWater, basins, yaw: 0, radius: cell * size * .72 };
+}
+
+// Four-connected water connected to the padded boundary belongs to the sea.
+// The remaining components are closed inland basins, including narrow channels.
+export function closedBasins(land, size) {
+  const seen = new Uint8Array(land.length), queue = new Int32Array(land.length);
+  const flood = start => {
+    let read = 0, count = 1; queue[0] = start; seen[start] = 1;
+    while (read < count) {
+      const i = queue[read++], x = i % size, z = Math.floor(i / size);
+      for (const n of [x ? i - 1 : -1, x < size - 1 ? i + 1 : -1, z ? i - size : -1, z < size - 1 ? i + size : -1])
+        if (n >= 0 && !land[n] && !seen[n]) { seen[n] = 1; queue[count++] = n; }
+    }
+    return Array.from(queue.subarray(0, count));
+  };
+  for (let i = 0; i < land.length; i++) if ((!Math.floor(i / size) || Math.floor(i / size) === size - 1 || !(i % size) || i % size === size - 1) && !land[i] && !seen[i]) flood(i);
+  const basins = [];
+  for (let i = 0; i < land.length; i++) if (!land[i] && !seen[i]) basins.push(flood(i));
+  return basins;
 }
 
 export function shoreDistance(shape, x, z) {

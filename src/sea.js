@@ -211,8 +211,8 @@ const fragment = /* glsl */`
     for (int i = 0; i < ${MAX_ISLES}; i++) {
       if (uIsles[i].z <= 0.0) continue;
       float d = shoreAt(p, i);
-      // Stop crests drawing through low sand/grass. Real pools and open bays
-      // remain water because they are absent from the physical land field.
+      // Outer-coast atlas also masks enclosed basins: their calm water is a
+      // separate opaque mesh. Open bays remain connected to the ocean.
       if (uCoastGrid[i].z > 0.0 && d < 0.0) discard;
       lagoon = max(lagoon, 1.0 - smoothstep(0.0, 24.0, d));
       sand = max(sand, 1.0 - smoothstep(-2.0, 7.0, d));
