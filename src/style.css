@@ -83,8 +83,16 @@ button.ghost { background: rgba(10, 29, 41, .55); color: var(--fg); border-color
 .dock { position: absolute; left: 50%; bottom: 120px; translate: -50% 0; font-size: 18px; padding: 14px 26px; animation: bob 1.2s ease-in-out infinite alternate; }
 @keyframes bob { to { translate: -50% -6px; } }
 .keys { position: absolute; right: 18px; top: 58px; margin: 0; font-size: 12px; color: var(--muted); text-shadow: 0 1px 2px #000; }
+.deck-toggle { position: absolute; right: 18px; bottom: 185px; min-width: 118px; min-height: 48px; }
+.deck-toggle:disabled { opacity: .5; }
+.deck-toggle[aria-pressed="true"] { background: #b7e4ad; }
+.deck-status { position: absolute; right: 18px; top: 94px; padding: 8px 12px; border-radius: 10px; background: #0a1d29dd; font-size: 13px; text-align: right; }
+.deck-status small { color: var(--muted); font-size: 11px; }
+#hud[data-control="deck"] .guns, #hud[data-control="deck"] .berth, #hud[data-control="deck"] .dock { display: none; }
+#hud[data-control="deck"] .goal { display: none; }
 @media (pointer: coarse), (max-width: 900px) { .keys { display: none; } }
 @media (pointer: fine) { .stick { display: none; } }
+@media (max-width: 900px) { .stick { display: block; } }
 
 /* Island treasure hunt HUD. */
 #matchHud header { display: flex; align-items: center; gap: 12px; }

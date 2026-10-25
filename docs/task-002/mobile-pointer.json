@@ -1,0 +1,40 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "input": "browser pointer hold on joystick for 700 ms; UI switch back to helm",
+  "before": {
+    "control": "deck",
+    "position": [
+      0.16109085083007812,
+      2.632727189497514,
+      -4.869454123757103
+    ],
+    "throttle": 0,
+    "rudder": 0,
+    "motion": "Idle"
+  },
+  "after": {
+    "control": "deck",
+    "position": [
+      1.297081004685255,
+      2.632727189497514,
+      -5.950030123765683
+    ],
+    "throttle": 0,
+    "rudder": 0,
+    "motion": "Idle"
+  },
+  "returnToHelm": {
+    "control": "helm",
+    "position": [
+      0,
+      5.032727328213778,
+      14.052727023037997
+    ],
+    "throttle": 0,
+    "rudder": 0,
+    "motion": "Idle"
+  }
+}

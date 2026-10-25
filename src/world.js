@@ -13,6 +13,8 @@ import { sfx } from './sound.js';
 import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
+import { DeckWalker, makeDeckZone } from './deck-walk.js';
+import { DeckCamera } from './deck-camera.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
@@ -80,6 +82,7 @@ export class World {
     this.scene.add(this.boss.mesh);
     this.bossBeaten = false;
     this.crew = {};
+    this.seaControlMode = 'helm';
     // Артем's models replace the built-in ships and islands as soon as they are in; the crew boards after that.
     // Deck lanterns on both ships: off by day, warm pools of light on deck after dusk.
     this.lamps = [[this.player, '#ffb25a'], [this.boss, '#ff6a9a']].map(([v, col]) => {
@@ -128,6 +131,8 @@ export class World {
   }
 
   applyKit() {
+    this.setSeaControlMode('helm');
+    this.lastDeckPosition = null;
     dressShip(this.player.mesh, PLAYER_SHIP.model);
     dressShip(this.boss.mesh, 'scar_karakatitsa');
     for (const isl of this.isles) {
@@ -193,6 +198,61 @@ export class World {
     }
   }
 
+  canDeckWalk() {
+    const c = this.crew.captain;
+    return !!(this.player.hp > 0 && !this.player.sinking && this.player.mesh.parent &&
+      c?.parent === this.player.mesh && c.userData.actions?.Walk && c.userData.actions?.Idle &&
+      this.player.mesh.userData.navigation?.surfaces?.find(s => s.kind === 'deck')?.outline?.length >= 3);
+  }
+
+  captainMotion(moving) {
+    const c = this.crew.captain, name = moving ? 'Walk' : 'Idle';
+    if (!c?.userData.actions || (c.userData.deckMotion ?? 'Idle') === name) return;
+    const actions = c.userData.actions, previous = actions[c.userData.deckMotion ?? 'Idle'];
+    previous?.fadeOut(.16); actions[name]?.reset().fadeIn(.16).play();
+    c.userData.deckMotion = name;
+  }
+
+  setSeaControlMode(mode) {
+    if (mode === this.seaControlMode) return true;
+    if (mode === 'deck') {
+      if (!this.canDeckWalk() || this.ui.open) return false;
+      const navigation = this.player.mesh.userData.navigation;
+      // Stationary crew occupy space too; they are never duplicated or moved.
+      const crew = Object.values(this.crew).filter(c => c !== this.crew.captain && c.visible && c.parent === this.player.mesh).map(c => ({ bounds: {
+        min: [c.position.x - .3, c.position.y, c.position.z - .3],
+        max: [c.position.x + .3, c.position.y + c.userData.height, c.position.z + .3],
+      } }));
+      const walker = new DeckWalker(makeDeckZone(navigation, crew), this.walkNavigation === navigation ? this.lastDeckPosition : null);
+      if (!walker.position) return false;
+      this.walkNavigation = navigation; this.deckWalker = walker;
+      this.deckCamera = new DeckCamera();
+      this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
+      this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
+      this.crew.captain.rotation.y = walker.facing;
+    } else if (mode === 'helm') {
+      this.lastDeckPosition = this.deckWalker?.position && { ...this.deckWalker.position };
+      if (this.crew.captain) this.board(this.player, this.crew.captain, 0, 0, true);
+      this.captainMotion(false);
+      if (this.helmCamera) { this.camYaw = this.helmCamera.yaw; this.camPitch = this.helmCamera.pitch; this.camZoom = this.helmCamera.zoom; }
+      this.camPos.copy(this.camera.position);
+    } else return false;
+    this.seaControlMode = mode;
+    this.onControlMode?.(mode);
+    return true;
+  }
+
+  updateDeck(dt, input) {
+    if (this.seaControlMode !== 'deck') return;
+    if (!this.canDeckWalk() || this.ui.open || this.walkNavigation !== this.player.mesh.userData.navigation) { this.setSeaControlMode('helm'); return; }
+    const walker = this.deckWalker, captain = this.crew.captain;
+    walker.update(dt, input.walkX ?? 0, input.walkZ ?? 0);
+    const p = walker.position; captain.position.set(p.x, p.y, p.z);
+    const angle = Math.atan2(Math.sin(walker.facing - captain.rotation.y), Math.cos(walker.facing - captain.rotation.y));
+    captain.rotation.y += angle * (1 - Math.exp(-dt * 14));
+    this.captainMotion(walker.moving);
+  }
+
   resize(w, h) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.post.resize(); }
 
   // How the ship lies against the nearest open berth: distance, angle off the pier line, speed, and whether each is good enough.
@@ -223,6 +283,7 @@ export class World {
 
   // Tie up: lay the ship exactly in the berth, whichever way round she came in.
   moor(isl) {
+    this.setSeaControlMode('helm');
     const b = isl.userData.pier, p = this.player;
     p.pos.set(b.berth.x, p.pos.y, b.berth.z);
     p.heading = wrapAbs(p.heading - b.heading) < Math.PI / 2 ? b.heading : b.heading + Math.PI;
@@ -231,6 +292,7 @@ export class World {
 
   // Put the ship out in the approach to a berth, lined up with it and stopped.
   teleportBerth(isl, dist = 45) {
+    this.setSeaControlMode('helm');
     const b = isl.userData.pier, p = this.player;
     p.pos.copy(b.berth).addScaledVector(b.dir, dist).setY(0);
     p.heading = b.heading;
@@ -286,6 +348,7 @@ export class World {
   }
 
   fire(side) {
+    if (this.seaControlMode === 'deck' || this.ui.open) return;
     if (this.state !== 'battle' && this.state !== 'sail') return;
     if (this.reload[side] > 0 || this.player.hp <= 0) return;
     this.reload[side] = RELOAD;
@@ -362,7 +425,7 @@ export class World {
     if (this.state === 'sail' || this.state === 'battle') {
       if (p.hp > 0) {
         p.throttle = input.throttle;
-        p.rudder = input.rudder;
+        p.rudder = this.seaControlMode === 'deck' ? 0 : input.rudder;
       } else { p.throttle = 0; p.rudder = 0; }
     }
     for (const s of ['left', 'right']) this.reload[s] = Math.max(0, this.reload[s] - dt);
@@ -376,6 +439,7 @@ export class World {
     if (!this.bossGone) this.boss.update(dt, t);
     this.updateFloaters(dt, t);
     this.life.update(dt, t);
+    this.updateDeck(dt, input);
     for (const fig of Object.values(this.crew)) fig?.userData.mixer?.update(dt);
     // Ships cannot sail through the islands.
     for (const isl of this.scene.children.filter(o => o.userData.radius)) {
@@ -447,6 +511,7 @@ export class World {
       marks: this.marks(),
       goal: goal && { name: goal.name, kind: goal.kind, dist: Math.round(goal.pos.distanceTo(p.pos)), ang: this.bearing(goal.pos) },
     });
+    this.ui.deckHud?.(this.seaControlMode, this.canDeckWalk());
   }
 
   // Compass bar markers: angle relative to the bow and distance.
@@ -461,13 +526,21 @@ export class World {
 
   // Turn the view: drag to orbit around the ship (dx, dy in pixels), wheel to zoom.
   orbit(dx, dy) {
+    if (this.seaControlMode === 'deck') { this.deckCamera.orbit(dx, dy); return; }
     this.camYaw -= dx * .006;
     this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * .004, -.3, .9);
     this.camDragAt = this.time;
   }
-  zoom(delta) { this.camZoom = THREE.MathUtils.clamp(this.camZoom * Math.exp(delta * .001), .55, 1.8); }
+  zoom(delta) {
+    if (this.seaControlMode === 'deck') { this.deckCamera.zoom(delta); return; }
+    this.camZoom = THREE.MathUtils.clamp(this.camZoom * Math.exp(delta * .001), .55, 1.8);
+  }
 
   updateCamera(dt) {
+    if (this.seaControlMode === 'deck') {
+      this.deckCamera.update(dt, this.camera, this.player.mesh, this.deckWalker, this.walkNavigation);
+      return;
+    }
     const p = this.player, f = p.forward(), cam = p.mesh.userData.metrics.camera;
     // A tall phone screen sees less to the sides, so the camera stands further back.
     const k = THREE.MathUtils.clamp(1.25 / this.camera.aspect, 1, 2.1);
@@ -572,6 +645,7 @@ export class World {
   }
 
   repair() {
+    this.setSeaControlMode('helm');
     const p = this.player;
     p.hp = p.maxHp; p.sinking = 0; p.speed = 0;
     this.lost = false;
@@ -599,6 +673,8 @@ export class World {
 
   // Back to a fresh voyage: islands open, Scar afloat, the ship at the start.
   resetProgress() {
+    this.setSeaControlMode('helm');
+    this.lastDeckPosition = null;
     for (const isl of this.isles) isl.userData.done = false;
     const b = this.boss;
     b.hp = b.maxHp; b.sinking = 0; b.speed = 0;
@@ -621,6 +697,7 @@ export class World {
 
   // Put the ship next to a place, bow toward it.
   teleport(to, dist) {
+    this.setSeaControlMode('helm');
     const p = this.player, from = to.clone().add(new THREE.Vector3(0, 0, dist));
     from.y = 0;
     p.pos.copy(from);

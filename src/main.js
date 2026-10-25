@@ -8,6 +8,7 @@ import { loadSave, writeSave, clearSave } from './save.js';
 import { setupGod, putSpecial } from './god.js';
 import { portrait } from './characters.js';
 import { SAILS, sailIndex } from './ship.js';
+import { seaIntent } from './deck-walk.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -57,8 +58,10 @@ resize();
 const input = { throttle: 0, rudder: 0 };
 const keys = new Set();
 addEventListener('keydown', e => {
+  if (mode !== 'sea' || ui.open || e.target.matches?.('input, textarea, [contenteditable="true"]')) return;
+  if (e.code === 'KeyF' && !e.repeat) { e.preventDefault(); toggleDeck(); return; }
   keys.add(e.code);
-  if (mode !== 'sea' || ui.open) return;
+  if (world.seaControlMode === 'deck') return;
   // W/S set the sails one step at a time.
   const step = (e.code === 'KeyW' || e.code === 'ArrowUp') ? 1 : (e.code === 'KeyS' || e.code === 'ArrowDown') ? -1 : 0;
   if (step && !e.repeat) setSails(sailIndex(input.throttle) + step);
@@ -67,7 +70,7 @@ addEventListener('keydown', e => {
   if ((e.code === 'Enter' || e.code === 'Space') && world.nearIsland()) land();
 });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => keys.clear());
+addEventListener('blur', () => clearControlInput());
 
 function setSails(i) {
   input.throttle = SAILS[THREE.MathUtils.clamp(i, 0, SAILS.length - 1)].v;
@@ -93,25 +96,40 @@ canvas.addEventListener('pointercancel', dragEnd);
 canvas.addEventListener('wheel', e => { if (mode === 'sea') { e.preventDefault(); world.zoom(e.deltaY); } }, { passive: false });
 
 const stick = $('stick'), knob = stick.querySelector('i');
-let stickId = null, stickX = 0;
+let stickId = null, stickX = 0, stickY = 0;
 function stickMove(e) {
+  if (mode !== 'sea' || ui.open) return;
   const r = stick.getBoundingClientRect();
   let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2);
   const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
   knob.style.transform = `translate(${x * 38}px, ${y * 38}px)`;
-  stickX = x;
+  stickX = x; stickY = y;
   // Pushing up sets the sails, snapping to the nearest setting; they stay set after the finger lifts.
-  input.throttle = SAILS[sailIndex(-y * 1.15)].v;
+  if (world.seaControlMode === 'helm') input.throttle = SAILS[sailIndex(-y * 1.15)].v;
 }
-stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); stickMove(e); });
+stick.addEventListener('pointerdown', e => { if (mode !== 'sea' || ui.open || stickId !== null) return; stickId = e.pointerId; stick.setPointerCapture(e.pointerId); stickMove(e); });
 stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) stickMove(e); });
-const stickUp = e => { if (e.pointerId !== stickId) return; stickId = null; stickX = 0; knob.style.transform = `translate(0, ${-input.throttle * 38}px)`; };
+const knobRest = () => { knob.style.transform = `translate(0, ${world.seaControlMode === 'deck' ? 0 : -input.throttle * 38}px)`; };
+const stickUp = e => { if (e.pointerId !== stickId) return; stickId = null; stickX = stickY = 0; knobRest(); };
 stick.addEventListener('pointerup', stickUp);
 stick.addEventListener('pointercancel', stickUp);
+stick.addEventListener('lostpointercapture', stickUp);
+
+function clearControlInput() {
+  keys.clear(); input.rudder = input.walkX = input.walkZ = 0;
+  if (stickId !== null && stick.hasPointerCapture(stickId)) stick.releasePointerCapture(stickId);
+  if (dragId !== null && canvas.hasPointerCapture(dragId)) canvas.releasePointerCapture(dragId);
+  stickId = dragId = null; stickX = stickY = 0; knobRest();
+}
+world.onControlMode = () => { clearControlInput(); ui.deckHud(world.seaControlMode, world.canDeckWalk()); };
+function toggleDeck() {
+  if (mode !== 'sea' || ui.open) return;
+  if (!world.setSeaControlMode(world.seaControlMode === 'deck' ? 'helm' : 'deck')) ui.flash('Палуба пока недоступна');
+}
+$('deckToggle').addEventListener('click', toggleDeck);
 
 function readKeys() {
-  const left = keys.has('KeyA') || keys.has('ArrowLeft'), right = keys.has('KeyD') || keys.has('ArrowRight');
-  input.rudder = left ? 1 : right ? -1 : stickId !== null ? -stickX : 0;
+  Object.assign(input, seaIntent(world.seaControlMode, keys, stickId === null ? null : { x: stickX, y: stickY }, input.throttle));
 }
 
 $('fireL').addEventListener('click', () => world.fire('left'));
@@ -127,6 +145,7 @@ function land() {
   const def = isle.userData.def;
   const level = { ...def.level, name: def.name };
   mode = 'match';
+  clearControlInput();
   setSails(1);
   world.player.throttle = 0;
   world.player.speed = 0;
@@ -156,6 +175,7 @@ function land() {
   match.start(level, onEnd);
 }
 function backToSea() {
+  world.setSeaControlMode('helm'); clearControlInput();
   match.active = false;
   mode = 'sea';
   ui.mode('sea');
@@ -237,6 +257,7 @@ setupGod({
   state: () => ({
     version: '0.2.0', mode, gfx: { quality: world.post.quality, hour: +world.atmo.hour.toFixed(1), storm: +world.atmo.storm.toFixed(2) }, save: { ...save }, state: world.state,
     pos: world.player.pos.toArray().map(v => Math.round(v)), heading: +world.player.heading.toFixed(2),
+    seaControlMode: world.seaControlMode,
     hp: world.player.hp, boss: { hp: world.boss.hp, sinking: +world.boss.sinking.toFixed(2), gone: !!world.bossGone },
     target: world.target() && world.target().name,
     match: mode === 'match' ? { level: match.level.name, moves: match.moves, score: match.board.score, collected: match.board.collected } : null,
@@ -244,4 +265,4 @@ setupGod({
 });
 
 // Handy for checks from the console.
-window.game = { world, match, land, input, get mode() { return mode; } };
+window.game = { world, match, land, input, readInput: readKeys, get mode() { return mode; } };
