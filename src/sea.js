@@ -203,8 +203,9 @@ const fragment = /* glsl */`
       n.y -= 1.2 * k * a * sin(ph) * near;
     }
     // Two layers of small ripples drifting across each other so the sun breaks into sparkles.
-    vec3 r1 = texture2D(uRipples, p * 0.045 + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
-    vec3 r2 = texture2D(uRipples, p * 0.083 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
+    vec2 rippleWarp = 0.18 * sin(p.yx * vec2(0.031,0.023) + uTime * vec2(0.11,-0.07));
+    vec3 r1 = texture2D(uRipples, p * 0.045 + rippleWarp + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
+    vec3 r2 = texture2D(uRipples, p * 0.083 - rippleWarp * 0.73 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
     n = normalize(n + vec3(r1.x + r2.x * 0.7, 0.0, r1.y + r2.y * 0.7) * uRippleK * (0.75 * near + 0.1));
 
     vec3 view = normalize(cameraPosition - vWorld);
