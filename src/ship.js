@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { waveHeight } from './sea.js';
+import { HullMotion } from './hull-motion.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -228,6 +229,7 @@ export class Vessel {
     this.hp = this.maxHp = hp;
     this.heel = 0;
     this.sinking = 0;
+    this.motion = new HullMotion();
   }
 
   get pos() { return this.mesh.position; }
@@ -257,13 +259,15 @@ export class Vessel {
     const x = this.pos.x, z = this.pos.z;
     const hb = waveHeight(x + f.x * len, z + f.z * len, t), hs = waveHeight(x - f.x * len, z - f.z * len, t);
     const hr = waveHeight(x + r.x * wid, z + r.z * wid, t), hl = waveHeight(x - r.x * wid, z - r.z * wid, t);
+    const motion = this.motion.update(dt, { heave: (hb + hs + hr + hl) / 4 - .3,
+      pitch: Math.atan2(hb - hs, len * 2), roll: Math.atan2(hr - hl, wid * 2) * .8, heel: this.heel }, this.mesh.userData.length);
     // Sinking goes in stages: the hull settles and lists, then the bow lifts and the stern drags her under.
     const s = this.sinking, ss = THREE.MathUtils.smoothstep;
     const settle = ss(s, 0, .3) * 2.2, plunge = ss(s, .35, 1) ** 1.6 * 26;
     const list = ss(s, 0, .4) * .5, lift = ss(s, .3, .8) * .95;
     const calm = 1 - ss(s, 0, .5);
-    this.pos.y = ((hb + hs + hr + hl) / 4 - .3) * calm - settle - plunge;
-    this.mesh.rotation.set(Math.atan2(hb - hs, len * 2) * calm + lift, this.heading, (Math.atan2(hr - hl, wid * 2) * .8 + this.heel) * calm + list, 'YXZ');
+    this.pos.y = motion.heave * calm - settle - plunge;
+    this.mesh.rotation.set(motion.pitch * calm + lift, this.heading, motion.roll * calm + list, 'YXZ');
 
     for (const s of this.mesh.userData.sails) s.scale.z = .8 + .2 * Math.abs(this.throttle) + .05 * Math.sin(t * 3 + s.id);
     // Model sails breathe and flags flutter, harder with more sail set.
