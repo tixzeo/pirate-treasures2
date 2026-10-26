@@ -235,6 +235,10 @@ export class Vessel {
   }
 
   get pos() { return this.mesh.position; }
+  resetDynamics() {
+    this.speed=this.yaw=this.helm=this.heel=this.rudder=this.throttle=0;
+    this.motion.reset();
+  }
   forward() { return new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading)); }
   // Unit vector out of the left (port) or right (starboard) side.
   side(which) {

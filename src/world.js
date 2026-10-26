@@ -296,7 +296,7 @@ export class World {
     const b = isl.userData.pier, p = this.player;
     p.pos.set(b.berth.x, p.pos.y, b.berth.z);
     p.heading = wrapAbs(p.heading - b.heading) < Math.PI / 2 ? b.heading : b.heading + Math.PI;
-    p.speed = p.yaw = p.helm = 0;
+    p.resetDynamics();
   }
 
   // Put the ship out in the approach to a berth, lined up with it and stopped.
@@ -305,7 +305,7 @@ export class World {
     const b = isl.userData.pier, p = this.player;
     p.pos.copy(b.berth).addScaledVector(b.dir, dist).setY(0);
     p.heading = b.heading;
-    p.speed = p.yaw = p.helm = 0;
+    p.resetDynamics();
     const cam = p.mesh.userData.metrics.camera;
     this.camPos.copy(p.pos).addScaledVector(b.dir, cam.teleportBack).setY(cam.teleportUp);
   }
@@ -681,7 +681,7 @@ export class World {
     clearTimeout(this.lossTimer);
     this.setSeaControlMode('helm');
     const p = this.player;
-    p.hp = p.maxHp; p.sinking = 0; p.speed = p.yaw = p.helm = p.rudder = p.throttle = 0;
+    p.hp = p.maxHp; p.sinking = 0; p.resetDynamics();
     this.shoreImpact.reset();
     this.lastDamage = null;
     this.lost = false;
@@ -719,7 +719,7 @@ export class World {
     this.lastDeckPosition = null;
     for (const isl of this.isles) isl.userData.done = false;
     const b = this.boss;
-    b.hp = b.maxHp; b.sinking = 0; b.speed = 0;
+    b.hp = b.maxHp; b.sinking = 0; b.resetDynamics();
     b.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     if (this.bossGone) this.scene.add(b.mesh);
     this.bossBeaten = this.bossGone = false;
@@ -728,7 +728,7 @@ export class World {
     this.fx.clearBalls();
     this.queue = [];
     const p = this.player;
-    p.hp = p.maxHp; p.sinking = 0; p.speed = p.yaw = p.helm = 0; p.heading = 0;
+    p.hp = p.maxHp; p.sinking = 0; p.resetDynamics(); p.heading = 0;
     p.pos.set(0, 0, 0);
     const cam = p.mesh.userData.metrics.camera;
     this.camPos.set(0, cam.teleportUp, cam.resetBack);
@@ -744,7 +744,7 @@ export class World {
     from.y = 0;
     p.pos.copy(from);
     p.heading = 0;
-    p.speed = p.yaw = p.helm = 0;
+    p.resetDynamics();
     const cam = p.mesh.userData.metrics.camera;
     this.camPos.copy(from).add(new THREE.Vector3(0, cam.teleportUp, cam.teleportBack));
   }
