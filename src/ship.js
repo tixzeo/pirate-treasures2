@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
-import { advanceSurge, advanceSteering } from './ship-physics.js';
+import { advanceSurge, advanceSteering, advanceHeel } from './ship-physics.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -247,7 +247,7 @@ export class Vessel {
     const steering=advanceSteering(this,this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
     this.helm=steering.helm;this.yaw=steering.yaw;this.heading+=steering.angle;
     this.pos.addScaledVector(this.forward(), this.speed * dt);
-    this.heel += (-this.yaw * .3 - this.heel) * Math.min(1, dt * 2);
+    this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt);
 
     const water = sampleHullWater(waveHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
       length: this.mesh.userData.length, width: this.mesh.userData.width }, t);

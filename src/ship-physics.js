@@ -31,3 +31,8 @@ export function advanceSteering({helm,yaw},rudder,speed,maxSpeed,turnRate,length
   // Integrate the angular response, rather than using the final rate for all dt.
   return {helm:nextHelm,yaw:nextYaw,angle:target*dt+(yaw-target)*tau*(1-decay)};
 }
+
+export function advanceHeel(heel,speed,yaw,dt) {
+  const target=clamp(-Math.atan(speed*yaw/9.81)*.38,-HULL_PHYSICS.heelLimit,HULL_PHYSICS.heelLimit);
+  return target+(heel-target)*Math.exp(-Math.max(0,dt)/HULL_PHYSICS.heelTime);
+}

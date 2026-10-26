@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {advanceSurge,waterDrag,advanceSteering} from '../src/ship-physics.js';
+import {advanceSurge,waterDrag,advanceSteering,advanceHeel} from '../src/ship-physics.js';
 test('sail thrust and water drag converge to each existing sail setting',()=>{
  for(const max of [9,14])for(const throttle of [-.25,0,1/3,2/3,1]){
   let v=0;for(let i=0;i<60*90;i++)v=advanceSurge(v,throttle,max,1/60);
@@ -31,4 +31,11 @@ test('angular inertia is time-partition independent with a settled wheel',()=>{
  const run=hz=>{let s={helm:1,yaw:0},angle=0;for(let i=0;i<hz*2;i++){s=advanceSteering(s,1,14,14,.9,32,1/hz);angle+=s.angle;}return {...s,angle};};
  const a=run(5),b=run(120);assert.ok(Math.abs(a.yaw-b.yaw)<1e-10);assert.ok(Math.abs(a.angle-b.angle)<1e-10);
  const small=advanceSteering({helm:1,yaw:0},1,14,14,.9,15,.1),large=advanceSteering({helm:1,yaw:0},1,14,14,.9,46,.1);assert.ok(small.yaw>large.yaw);
+});
+test('turning heel depends on acceleration, settles at rest and is symmetric astern',()=>{
+ assert.equal(advanceHeel(0,0,1,1),0);
+ assert.ok(Math.abs(advanceHeel(0,14,.5,1))>Math.abs(advanceHeel(0,2,.5,1)));
+ assert.equal(advanceHeel(0,14,.5,1),advanceHeel(0,-14,-.5,1));
+ const run=hz=>{let h=0;for(let i=0;i<hz;i++)h=advanceHeel(h,14,.5,1/hz);return h};assert.ok(Math.abs(run(5)-run(120))<1e-10);
+ let heel=.1;for(let i=0;i<600;i++)heel=advanceHeel(heel,0,0,1/60);assert.ok(Math.abs(heel)<1e-6);
 });
