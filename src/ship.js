@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
-import { advanceSurge, advanceSteering, advanceHeel } from './ship-physics.js';
+import { advanceSurge, advanceSteering, advanceHeel, HULL_PHYSICS } from './ship-physics.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -259,8 +259,10 @@ export class Vessel {
   }
 
   update(dt, t) {
-    this.speed = advanceSurge(this.speed,this.throttle,this.maxSpeed,dt);
-    const steering=advanceSteering(this,this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
+    const flooded=this.hp<=0||this.sinking>0;
+    this.speed = advanceSurge(this.speed,flooded?0:this.throttle,this.maxSpeed,dt,1+3*this.sinking);
+    if(flooded)this.speed*=Math.exp(-HULL_PHYSICS.floodDrag*Math.max(0,dt));
+    const steering=advanceSteering(this,flooded?0:this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
     this.helm=steering.helm;this.yaw=steering.yaw;this.heading+=steering.angle;
     this.pos.addScaledVector(this.forward(), this.speed * dt);
     this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt);

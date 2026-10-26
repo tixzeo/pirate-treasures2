@@ -15,3 +15,10 @@ test('contact dissipates normal approach energy and preserves a glancing escape'
  const away=vessel();away.speed=-4;away.yaw=.2;assert.equal(away.resolveContact({x:0,z:1},.5),0);assert.equal(away.speed,-4);assert.equal(away.yaw,.2);
  assert.equal(away.resolveContact({x:NaN,z:0}),0);assert.equal(away.resolveContact({x:0,z:0}),0);
 });
+test('dead or flooding ships cannot generate sail thrust and retain staged sinking',()=>{
+ for(const state of [{hp:0,sinking:0},{hp:100,sinking:.5}]){
+  const ship=vessel();Object.assign(ship,state,{throttle:1,rudder:1});ship.update(1/60,0);assert.equal(ship.speed,0);assert.equal(ship.yaw,0);
+  ship.speed=10;for(let i=0;i<300;i++)ship.update(1/60,i/60);assert.ok(ship.speed<.1);
+  ship.sinking=1;ship.update(1/60,5);assert.ok(ship.pos.y< -20);assert.ok(ship.mesh.rotation.x>.8);
+ }
+});

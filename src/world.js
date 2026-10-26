@@ -582,7 +582,6 @@ export class World {
   sinkBoss(dt) {
     const b = this.boss, before = b.sinking;
     b.throttle = 0; b.rudder = 0;
-    b.speed *= 1 - dt * .8;
     b.sinking = Math.min(1, b.sinking + dt / 12);
     if (before === 0) {
       this.life.launchBoat(b, this.player.pos);
