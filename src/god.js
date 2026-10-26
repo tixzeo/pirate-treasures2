@@ -140,4 +140,3 @@ export function setupGod(api) {
     act[a](i === undefined ? undefined : isNaN(+i) ? i : +i);
   });
 }
-

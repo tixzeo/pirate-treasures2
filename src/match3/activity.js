@@ -9,7 +9,7 @@ export class Match3Activity {
   update(dt,t){this.match.update(dt,t)}
   render(){this.match.render()}
   resize(w,h){this.match.resize(w,h)}
-  stop(){this.match.active=false;this.ui?.mode('island')}
+  stop(){this.match.stop();this.ui?.mode('island')}
   debug(command,arg){
     const m=this.match;
     if(command==='view')return m;
