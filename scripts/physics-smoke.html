@@ -35,8 +35,9 @@ function view(name){
 }
 for(const b of document.querySelectorAll('button'))b.onclick=()=>{
  if(b.textContent!=='Движение'){view(b.textContent);return;}
- view('Ход');let last=performance.now(),elapsed=0,frames=0;const tick=now=>{
-  const dt=Math.min((now-last)/1000,.2);last=now;elapsed+=dt;frames++;p.rudder=elapsed>2?.6:0;p.update(dt,20+elapsed);world.sea.addWake(dt,[p]);draw(20+elapsed);
+ view('Ход');let last=performance.now(),elapsed=0,frames=0;const motionClock=new SimulationClock(),tick=now=>{
+  const dt=Math.min((now-last)/1000,.2);last=now;elapsed+=dt;frames++;
+  motionClock.advance(dt,(step,t)=>{p.rudder=t>2?.6:0;p.update(step,20+t);world.sea.addWake(step,[p]);});draw(20+motionClock.time);
   if(elapsed<6)animation=requestAnimationFrame(tick);else{out.textContent='PASS · motion · '+frames+' frames';document.body.dataset.motion=JSON.stringify({frames,elapsed,speed:p.speed,roll:p.mesh.rotation.z});}
  };animation=requestAnimationFrame(tick);
 };
