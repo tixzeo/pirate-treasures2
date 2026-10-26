@@ -1,13 +1,12 @@
 import * as THREE from 'three';
 import { World } from './world.js';
-import { Match3 } from './match3/view.js';
-import { Match3Activity } from './match3/activity.js';
+import { createMatch3Activity } from './match3/activity.js';
 import { registerIslandActivity, islandActivity } from './island-activity.js';
 import { UI } from './ui.js';
 import { updateTweens } from './tween.js';
 import { sfx, setMuted, muted } from './sound.js';
 import { loadSave, writeSave, clearSave } from './save.js';
-import { setupGod, putSpecial } from './god.js';
+import { setupGod } from './god.js';
 import { portrait } from './characters.js';
 import { SAILS, sailIndex } from './ship.js';
 import { seaIntent } from './deck-walk.js';
@@ -24,8 +23,7 @@ const ui = new UI();
 ui.portrait = id => portrait(renderer, id);
 ui.portrait('captain').then(url => { $('introFace').src = url; }, () => {});
 const world = new World(renderer, ui);
-const match = new Match3(renderer, ui);
-registerIslandActivity(()=>new Match3Activity(match),{fallback:true});
+registerIslandActivity(createMatch3Activity,{fallback:true});
 const activity=islandActivity();
 let mode = 'intro';
 let speed = 1;
@@ -220,8 +218,11 @@ renderer.setAnimationLoop(() => {
 });
 
 // God menu: testing tools for the prototype.
+const matchAvailable=()=>mode==='island'&&activity.kind==='match3';
+const matchCommand=(command,...args)=>{if(matchAvailable())return activity.debug(command,...args)};
 setupGod({
   mode: () => mode,
+  matchAvailable,
   isles: () => world.isles.map(i => ({ name: i.userData.def.name, done: i.userData.done })),
   reset() {
     clearSave();
@@ -241,16 +242,10 @@ setupGod({
     else world.teleportBerth(world.isles[i]);
   },
   toggleIsle(i) { const d = world.isles[i].userData; d.done = !d.done; persist(); },
-  matchWin() {
-    if (mode !== 'island' || match.over) return;
-    const lv = match.level, b = match.board;
-    if (lv.score) b.score = Math.max(b.score, lv.score);
-    for (const t in lv.collect || {}) b.collected[t] = Math.max(b.collected[t] || 0, lv.collect[t]);
-    match.hud(); match.checkEnd();
-  },
-  matchMoves(n) { if (mode === 'island') { match.moves += n; match.hud(); } },
-  matchSpecial(t) { if (mode === 'island' && !match.busy) putSpecial(match, t); },
-  matchShuffle() { if (mode === 'island' && !match.busy) match.play(match.board.shuffle()); },
+  matchWin(){matchCommand('win')},
+  matchMoves(n){matchCommand('moves',n)},
+  matchSpecial(t){matchCommand('special',t)},
+  matchShuffle(){matchCommand('shuffle')},
   sinkBoss() {
     if (world.bossBeaten) return;
     world.boss.hp = 0;
@@ -269,9 +264,11 @@ setupGod({
     seaControlMode: world.seaControlMode,
     hp: world.player.hp, boss: { hp: world.boss.hp, sinking: +world.boss.sinking.toFixed(2), gone: !!world.bossGone },
     target: world.target() && world.target().name,
-    match: mode === 'island' ? { level: match.level.name, moves: match.moves, score: match.board.score, collected: match.board.collected } : null,
+    activity:mode==='island'?{kind:activity.kind}:null,
+    match:matchCommand('state')??null,
   }),
 });
 
 // Handy for checks from the console.
-window.game = { world, match, land, input, readInput: readKeys, registerIslandActivity, get activity(){return activity}, get mode() { return mode; } };
+window.game = { world, land, input, readInput: readKeys, registerIslandActivity,
+  get match(){return matchCommand('view')??null},get activity(){return activity},get mode(){return mode} };

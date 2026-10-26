@@ -1,6 +1,6 @@
 // God menu for testing: reset progress, jump around, win or lose on demand, and copy the game state for a bug report.
 // Turn GOD_MENU off before publishing to Yandex Games.
-import { CANNON_ROW, BARREL, COMPASS, N } from './match3/board.js';
+import { CANNON_ROW, BARREL, COMPASS } from './match3/board.js';
 
 export const GOD_MENU = true;
 
@@ -70,7 +70,7 @@ export function setupGod(api) {
 
   function render() {
     const isles = api.isles();
-    const inMatch = api.mode() === 'island';
+    const inMatch = api.matchAvailable();
     panel.innerHTML = `
       <header><b>God-меню</b><button type="button" class="ghost" data-a="close">✕</button></header>
       <section>
@@ -141,13 +141,3 @@ export function setupGod(api) {
   });
 }
 
-// Helpers for the match-3 board used by the menu.
-export function putSpecial(match, t) {
-  const b = match.board;
-  const r = Math.floor(Math.random() * N), c = Math.floor(Math.random() * N);
-  const tile = b.grid[r][c];
-  const old = match.meshes.get(tile.id);
-  match.boardGroup.remove(old);
-  tile.t = t;
-  match.addMesh(tile.id, t, r, c);
-}
