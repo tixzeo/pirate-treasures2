@@ -6,10 +6,10 @@ export const BRIGANTINE = Object.freeze({
   handling: Object.freeze({ hp: 100, maxSpeed: 14, turnRate: .9 }),
 });
 
-// Native 22m review asset, uniformly fitted to the captain's chosen 32m brig.
+// Native 32m V6 brig with authored UV textures. Only this class is replaced.
 // Legacy BRIGANTINE remains available for TASK 001 regression checks.
 export const PLAYER_SHIP = Object.freeze({
-  model: 'morskoy_strannik_v2', length: 32, referenceLength: 14,
+  model: 'morskoy_strannik_v6', class: 'brig', length: 32, referenceLength: 14,
   handling: BRIGANTINE.handling,
 });
 

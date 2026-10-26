@@ -14,7 +14,9 @@ import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
 import { DeckWalker, makeDeckZone } from './deck-walk.js';
-import { DeckCamera } from './deck-camera.js';
+import { DeckCamera, CrewOcclusion } from './deck-camera.js';
+import { boundsOf } from './ship-layout.js';
+import { ShoreImpact } from './shore-impact.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
@@ -83,6 +85,7 @@ export class World {
     this.bossBeaten = false;
     this.crew = {};
     this.seaControlMode = 'helm';
+    this.shoreImpact = new ShoreImpact();
     // Артем's models replace the built-in ships and islands as soon as they are in; the crew boards after that.
     // Deck lanterns on both ships: off by day, warm pools of light on deck after dusk.
     this.lamps = [[this.player, '#ffb25a'], [this.boss, '#ff6a9a']].map(([v, col]) => {
@@ -200,7 +203,7 @@ export class World {
 
   canDeckWalk() {
     const c = this.crew.captain;
-    return !!(this.player.hp > 0 && !this.player.sinking && this.player.mesh.parent &&
+    return !!(this.state === 'sail' && this.player.hp > 0 && !this.player.sinking && this.player.mesh.parent &&
       c?.parent === this.player.mesh && c.userData.actions?.Walk && c.userData.actions?.Idle &&
       this.player.mesh.userData.navigation?.surfaces?.find(s => s.kind === 'deck')?.outline?.length >= 3);
   }
@@ -226,11 +229,16 @@ export class World {
       const walker = new DeckWalker(makeDeckZone(navigation, crew), this.walkNavigation === navigation ? this.lastDeckPosition : null);
       if (!walker.position) return false;
       this.walkNavigation = navigation; this.deckWalker = walker;
-      this.deckCamera = new DeckCamera();
+      this.deckCamera = new DeckCamera(this.deckView);
+      this.crewOcclusion = new CrewOcclusion(Object.values(this.crew)
+        .filter(c => c !== this.crew.captain && c.visible && c.parent === this.player.mesh)
+        .map(figure => ({ figure, frame: this.player.mesh })));
       this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
       this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
       this.crew.captain.rotation.y = walker.facing;
     } else if (mode === 'helm') {
+      this.deckView = this.deckCamera?.view();
+      this.crewOcclusion?.restore(); this.crewOcclusion = null;
       this.lastDeckPosition = this.deckWalker?.position && { ...this.deckWalker.position };
       if (this.crew.captain) this.board(this.player, this.crew.captain, 0, 0, true);
       this.captainMotion(false);
@@ -369,6 +377,7 @@ export class World {
       if (!this.hits(ball, ship)) continue;
       const dmg = ship === this.boss ? 6 : this.immortal ? 0 : 5;
       ship.hp = Math.max(0, ship.hp - dmg);
+      if (ship === this.player && dmg > 0) this.lastDamage = 'cannon';
       this.fx.burst('fire', ball.m.position, 4, .6, 3);
       this.fx.burst('debris', ball.m.position, 5, 1, 5);
       this.fx.puff('smoke', ball.m.position, { size: 1.6 });
@@ -382,6 +391,7 @@ export class World {
 
   startBattle() {
     this.state = 'battle';
+    this.setSeaControlMode('helm');
     this.boss.throttle = .8;
     this.boss.reload = 3;
     this.ui.banner('«Каракатица» идёт на абордаж!', 'Шхуна капитана Шрама. Ставьте корабль бортом и давайте залп: Q — левый борт, E — правый.');
@@ -449,7 +459,10 @@ export class World {
         const min = isl.userData.block || isl.userData.shore + 3;
         const push = isl.userData.terrain ? terrainPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl) :
           coastPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl.position, min);
-        if (push) { v.pos.x += push.x; v.pos.z += push.z; v.speed *= .5; }
+        if (push) {
+          if (v === p && p.hp > 0) this.onShoreImpact(v.speed);
+          v.pos.x += push.x; v.pos.z += push.z; v.speed *= .5;
+        }
       }
     }
     // Nor through piers, including diagonal approaches and both pier ends.
@@ -468,8 +481,8 @@ export class World {
 
     if (this.state === 'battle') {
       if (this.boss.hp <= 0 && !this.bossBeaten) this.winBattle();
-      else if (p.hp <= 0 && !this.lost) this.loseBattle();
     }
+    if (p.hp <= 0 && !this.lost) this.loseBattle();
     if (this.boss.hp <= 0 && !this.bossGone) this.sinkBoss(dt);
     if (p.hp <= 0) p.sinking = Math.min(.35, p.sinking + dt * .15);
     // Burning ships smoke.
@@ -540,6 +553,7 @@ export class World {
   updateCamera(dt) {
     if (this.seaControlMode === 'deck') {
       this.deckCamera.update(dt, this.camera, this.player.mesh, this.deckWalker, this.walkNavigation);
+      this.crewOcclusion?.update(this.deckCamera.eye, this.deckWalker.position);
       return;
     }
     const p = this.player, f = p.forward(), cam = p.mesh.userData.metrics.camera;
@@ -633,32 +647,57 @@ export class World {
     this.onGold && this.onGold(500);
   }
 
+  onShoreImpact(speed) {
+    const hit = this.shoreImpact.sample(speed, this.time, this.immortal);
+    if (!hit) return;
+    const p = this.player;
+    p.hp = Math.max(0, p.hp - hit.damage);
+    if (hit.damage > 0) this.lastDamage = 'shore';
+    if (this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }
+    this.shake = Math.max(this.shake ?? 0, .3);
+    this.ui.flash(hit.damage ? `Берег: −${hit.damage} прочности` : 'Удар о берег');
+    if (this.state === 'battle') this.ui.battleHud(p, this.boss);
+  }
+
   loseBattle() {
     this.lost = true;
+    this.setSeaControlMode('helm');
+    const battle = this.state === 'battle', grounding = this.lastDamage === 'shore';
     sfx('lose');
-    setTimeout(() => this.ui.dialog({
-      title: 'Корабль пробит',
-      icon: 'shield',
-      who: 'captain_scar',
-      text: 'Шрам оказался сильнее. Плотники залатают пробоины, а в следующий раз держитесь к нему бортом и не подставляйте корму.',
-      buttons: [['Починиться и снова в бой', () => { this.ui.closeDialog(); this.repair(); }]],
-    }), 1200);
+    clearTimeout(this.lossTimer);
+    this.lossTimer = setTimeout(() => {
+      if (!this.lost || this.player.hp > 0) return;
+      this.ui.dialog({
+        title: grounding ? 'Корабль разбит о берег' : 'Корабль пробит',
+        icon: 'shield',
+        who: battle && !grounding ? 'captain_scar' : 'bosun',
+        text: battle && !grounding ? 'Шрам оказался сильнее. Плотники залатают пробоины, а в следующий раз держитесь к нему бортом и не подставляйте корму.' :
+          'Корпус не выдержал повреждений. Плотники починят корабль и вернут его в безопасную воду с убранными парусами.',
+        buttons: [[battle ? 'Починиться и снова в бой' : 'Починиться и вернуться в море', () => { this.ui.closeDialog(); this.repair(); }]],
+      });
+    }, 1200);
   }
 
   repair() {
+    clearTimeout(this.lossTimer);
     this.setSeaControlMode('helm');
     const p = this.player;
-    p.hp = p.maxHp; p.sinking = 0; p.speed = 0;
+    p.hp = p.maxHp; p.sinking = 0; p.speed = p.yaw = p.helm = p.rudder = p.throttle = 0;
+    this.shoreImpact.reset();
+    this.lastDamage = null;
     this.lost = false;
     this.fx.clearBalls();
     this.queue = [];
     // Back off to where Scar is out of sight, he regains his crew too.
-    const away = p.pos.clone().sub(this.boss.pos); away.y = 0; away.normalize();
-    p.pos.copy(this.boss.pos).addScaledVector(away, 120);
-    p.heading = Math.atan2(-away.x, -away.z);
-    this.boss.hp = this.boss.maxHp;
+    if (this.state === 'battle') {
+      const away = p.pos.clone().sub(this.boss.pos); away.y = 0; away.normalize();
+      p.pos.copy(this.boss.pos).addScaledVector(away, 120);
+      p.heading = Math.atan2(-away.x, -away.z);
+      this.boss.hp = this.boss.maxHp;
+    } else this.teleport(new THREE.Vector3(), 0);
     this.state = 'sail';
     this.ui.battleHud(null);
+    this.onRepair?.();
   }
 
   // Saved progress: which islands are done and whether Scar is already at the bottom.
@@ -674,6 +713,9 @@ export class World {
 
   // Back to a fresh voyage: islands open, Scar afloat, the ship at the start.
   resetProgress() {
+    clearTimeout(this.lossTimer);
+    this.shoreImpact.reset();
+    this.lastDamage = null;
     this.setSeaControlMode('helm');
     this.lastDeckPosition = null;
     for (const isl of this.isles) isl.userData.done = false;

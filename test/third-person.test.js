@@ -1,12 +1,52 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { DeckCamera, cameraRelativeMove } from '../src/deck-camera.js';
+import { DeckCamera, CrewOcclusion, cameraRelativeMove } from '../src/deck-camera.js';
 import { DeckWalker, makeDeckZone, deckClear } from '../src/deck-walk.js';
 
 const near = (a,b) => assert.ok(Math.abs(a-b)<1e-6,`${a} != ${b}`);
 const nav = {surfaces:[],obstacles:[]};
 const actor = () => ({position:{x:0,y:2,z:0}});
+
+test('deck view survives leaving and entering with a fresh target', () => {
+  const first = new DeckCamera(); first.orbit(170, -25); first.zoom(180);
+  const second = new DeckCamera(first.view());
+  second.update(1/60, new THREE.PerspectiveCamera(), new THREE.Group(), { position: { x: 2, y: 3, z: -4 } }, nav);
+  assert.deepEqual(second.view(), first.view());
+  assert.deepEqual(second.focus.toArray(), [2, 4.1, -4]);
+  near(second.azimuth, first.yaw);
+});
+
+test('foreground crew fades without changing shared materials, and restores on exit', () => {
+  const shared = new THREE.MeshStandardMaterial(), figure = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1.7, 1), shared); figure.add(mesh);
+  figure.position.set(0, 2.85, 1.5);
+  const occlusion = new CrewOcclusion([{ figure }]);
+  occlusion.update(new THREE.Vector3(0, 3.2, 4), actor().position);
+  assert.notEqual(mesh.material, shared); assert.equal(shared.opacity, 1);
+  assert.equal(mesh.material.opacity, .18); assert.equal(mesh.material.depthWrite, false);
+  occlusion.update(new THREE.Vector3(4, 3.2, 0), actor().position);
+  assert.equal(mesh.material.opacity, 1); assert.equal(mesh.material.transparent, false);
+  assert.equal(mesh.material.depthWrite, true);
+  occlusion.restore(); assert.equal(mesh.material, shared);
+});
+
+test('crew occlusion follows walking, turning and animated parts in a rolling ship', () => {
+  const ship = new THREE.Group(), figure = new THREE.Group(); ship.add(figure);
+  const shared = new THREE.MeshStandardMaterial();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(.6, 1.7, .4), shared); body.position.y = .85; figure.add(body);
+  figure.position.set(3, 2, 1.5);
+  const fade = new CrewOcclusion([{ figure, frame: ship }]), eye = new THREE.Vector3(0, 3.2, 4);
+  fade.update(eye, actor().position); assert.equal(body.material, shared);
+  figure.position.x = 0; ship.position.set(30, 2, -90); ship.rotation.set(.08, 1.2, -.13);
+  fade.update(eye, actor().position); assert.equal(body.material.opacity, .18);
+  figure.position.x = 3; figure.rotation.y = Math.PI / 2;
+  fade.update(eye, actor().position); assert.equal(body.material.opacity, 1);
+  body.position.z = -3; // an animated child now reaches into the view
+  fade.update(eye, actor().position); assert.equal(body.material.opacity, .18);
+  body.visible = false; fade.update(eye, actor().position); assert.equal(body.material.opacity, 1);
+  fade.restore(); assert.equal(body.material, shared);
+});
 
 test('screen controls follow the view at four headings and preserve analogue magnitude',()=>{
   for(const [yaw,x,z] of [[0,0,-1],[Math.PI/2,-1,0],[Math.PI,0,1],[-Math.PI/2,1,0]]){

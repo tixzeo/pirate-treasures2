@@ -38,6 +38,8 @@ tick(); const dist=Math.hypot(p.pos.x-b.berth.x,p.pos.z-b.berth.z);
 ok('berth '+isl.userData.def.name+(reverse?' reverse':''),dist<1e-5&&world.dockState()?.ready,{dist,dock:world.dockState()?.ready});
 world.moor(isl);
 }
+// Geometry regression, isolated from the separately checked impact damage.
+const wasImmortal=world.immortal;world.immortal=true;
 for(const isl of [...world.isles,...world.scenery]) {
 const shore=isl.userData.block||isl.userData.shore+3;
 p.pos.copy(isl.position).add(new THREE.Vector3(0,0,shore+u.length)); p.heading=0;p.speed=14;p.yaw=p.helm=0;
@@ -45,6 +47,7 @@ tick(240,1);
 const clearance=isl.userData.terrain ? terrainClearance(p.pos,p.heading,u.metrics.coast,isl).distance : coastDistance(p.pos,p.heading,u.metrics.coast.reach,isl.position).distance-shore-u.metrics.coast.radius;
 ok('coast '+isl.position.x+','+isl.position.z,clearance>=-1e-5,clearance);
 }
+world.immortal=wasImmortal;
 for(const isl of world.isles){
 const b=isl.userData.pier;
 p.pos.copy(b.berth).addScaledVector(b.side,-1);p.heading=b.heading;p.speed=p.yaw=p.helm=0;
