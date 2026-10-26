@@ -20,3 +20,14 @@ export function advanceSurge(speed,throttle,maxSpeed,dt) {
   }
   return target===0&&Math.abs(speed)<HULL_PHYSICS.stopSpeed?0:speed;
 }
+
+export function advanceSteering({helm,yaw},rudder,speed,maxSpeed,turnRate,length,dt) {
+  if(![helm,yaw,rudder,speed,maxSpeed,turnRate,length,dt].every(Number.isFinite)||dt<0)return {helm,yaw,angle:0};
+  const nextHelm=helm+clamp(clamp(rudder,-1,1)-helm,-HULL_PHYSICS.helmRate*dt,HULL_PHYSICS.helmRate*dt);
+  const bite=clamp(Math.abs(speed)/Math.max(.01,maxSpeed*.4),0,1);
+  const limit=Math.min(Math.max(0,turnRate),Math.abs(speed)/(Math.max(8,length)*HULL_PHYSICS.minTurnLength));
+  const target=nextHelm*limit*bite*Math.sign(speed),tau=HULL_PHYSICS.yawTime*Math.sqrt(Math.max(8,length)/32);
+  const decay=Math.exp(-dt/tau),nextYaw=target+(yaw-target)*decay;
+  // Integrate the angular response, rather than using the final rate for all dt.
+  return {helm:nextHelm,yaw:nextYaw,angle:target*dt+(yaw-target)*tau*(1-decay)};
+}
