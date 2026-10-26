@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
+import { advanceSurge } from './ship-physics.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -242,10 +243,7 @@ export class Vessel {
   }
 
   update(dt, t) {
-    const target = this.throttle * this.maxSpeed;
-    // Sails drive her up to speed steadily; the water brakes her hard at speed and gently near a stop, so she coasts a long way.
-    const rate = target * Math.sign(this.speed || target) > Math.abs(this.speed) ? this.maxSpeed * .2 : .25 + Math.abs(this.speed) * .18;
-    this.speed += THREE.MathUtils.clamp(target - this.speed, -rate * dt, rate * dt);
+    this.speed = advanceSurge(this.speed,this.throttle,this.maxSpeed,dt);
     this.helm += THREE.MathUtils.clamp(this.rudder - this.helm, -1.8 * dt, 1.8 * dt);
     const bite = THREE.MathUtils.clamp(Math.abs(this.speed) / (this.maxSpeed * .4), 0, 1);
     const want = this.helm * this.turnRate * bite * Math.sign(this.speed);
