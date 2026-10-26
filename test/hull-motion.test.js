@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HullMotion } from '../src/hull-motion.js';
+import { HullMotion, dampedAxis } from '../src/hull-motion.js';
 import { waveHeight, swell } from '../src/sea.js';
 import { sampleHullWater } from '../src/hull-water.js';
 
@@ -42,4 +42,12 @@ test('spatial water fit follows a moving plane exactly at every heading without 
     assert.ok(Math.abs(pose.roll-Math.atan(.03*Math.cos(heading)+.02*Math.sin(heading))*.8)<1e-10);
     assert.equal(motion.update(1/60,{...pose,heel:0},32).heave,pose.heave);
   }
+});
+test('angular buoyancy has continuous velocity and dissipates an impulse without ringing',()=>{
+ const m=new HullMotion(),flat={heave:0,pitch:0,roll:0,heel:0};m.update(0,flat,32);
+ m.update(.001,{...flat,roll:.2},32);assert.ok(Math.abs(m.roll)<1e-6);
+ let axis={value:0,velocity:1},previousEnergy=Infinity;
+ for(let i=0;i<600;i++){axis=dampedAxis(axis.value,axis.velocity,0,3,1/60);const energy=axis.velocity**2+9*axis.value**2;assert.ok(energy<=previousEnergy+1e-12);previousEnergy=energy;}
+ assert.ok(Math.abs(axis.value)<1e-10);
+ m.reset();assert.equal(m.ready,false);assert.equal(m.rollVelocity,0);
 });
