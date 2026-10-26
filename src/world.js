@@ -553,7 +553,6 @@ export class World {
   updateCamera(dt) {
     if (this.seaControlMode === 'deck') {
       this.deckCamera.update(dt, this.camera, this.player.mesh, this.deckWalker, this.walkNavigation);
-      this.crewOcclusion?.update(this.deckCamera.eye, this.deckWalker.position);
       return;
     }
     const p = this.player, f = p.forward(), cam = p.mesh.userData.metrics.camera;
@@ -750,5 +749,8 @@ export class World {
     this.camPos.copy(from).add(new THREE.Vector3(0, cam.teleportUp, cam.teleportBack));
   }
 
-  render() { this.post.render(); }
+  render() {
+    if(this.seaControlMode==='deck')this.crewOcclusion?.update(this.deckCamera.eye,this.deckWalker.position);
+    this.post.render();
+  }
 }
