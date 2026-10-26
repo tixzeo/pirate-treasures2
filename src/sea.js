@@ -22,9 +22,9 @@ const CHOP = 1.8; // how far crests lean together (Gerstner); 0 gives plain sine
 
 const vertex = /* glsl */`
   uniform float uTime;
-  uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
-  uniform float uAmp[4];
-  uniform float uPhase[4];
+  uniform vec4 uSwell[${SWELLS.length}];   // dir.x, dir.y, k, speed
+  uniform float uAmp[${SWELLS.length}];
+  uniform float uPhase[${SWELLS.length}];
   uniform vec2 uSeaCenter;
   uniform float uFarPlane;
   varying vec3 vWorld;
@@ -38,16 +38,16 @@ const vertex = /* glsl */`
     float detail = (1.0-uFarPlane) * (1.0-smoothstep(${(SIZE * .34).toFixed(1)},${(SIZE * .48).toFixed(1)},max(gridOffset.x,gridOffset.y)));
     float h = 0.0;
     vec3 n = vec3(0.0, 1.0, 0.0);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < ${SWELLS.length}; i++) {
       vec2 d = uSwell[i].xy;
       float k = uSwell[i].z, a = uAmp[i]*detail;
       vec3 packet = swellPacket(base, d, k, uTime, uPhase[i]);
-      float ph = dot(base, d) * k + uTime * uSwell[i].w + uPhase[i];
-      float s = sin(ph), c = cos(ph);
+      vec3 ph = swellPhase(base,d,k,uSwell[i].w,uTime,uPhase[i]);
+      float s = sin(ph.x), c = cos(ph.x);
       h += a * packet.x * s;
       // Gerstner: points slide toward the crest, so crests sharpen and troughs widen.
       w.xz += ${CHOP.toFixed(2)} * a * packet.x * d * c;
-      n.xz -= d * k * a * packet.x * c + packet.yz * a * s;
+      n.xz -= a * (packet.x * ph.yz * c + packet.yz * s);
       n.y -= ${CHOP.toFixed(2)} * k * a * packet.x * s;
     }
     w.y += h;
