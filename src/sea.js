@@ -3,6 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
 import { SWELLS, swell, PACKET_GLSL } from './waves.js';
 import { WakeTrail, WAKE } from './wake.js';
+import { WAKE_GLSL, wakeSurface } from './wake-field.js';
 export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
@@ -31,6 +32,7 @@ const vertex = /* glsl */`
   varying vec3 vNormal;
   varying float vHeight;
   ${PACKET_GLSL}
+  ${WAKE_GLSL}
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vec2 base = w.xz;
@@ -50,6 +52,7 @@ const vertex = /* glsl */`
       n.xz -= a * (packet.x * ph.yz * c + packet.yz * s);
       n.y -= ${CHOP.toFixed(2)} * k * a * packet.x * s;
     }
+    if(detail>0.001)h += wakeField(w.xz).x * detail;
     w.y += h;
     vWorld = w.xyz;
     vHeight = h;
@@ -119,8 +122,6 @@ const fragment = /* glsl */`
   uniform sampler2D uRefl;             // the scene as the water mirrors it (high quality only)
   uniform mat4 uReflMatrix;
   uniform float uUseRefl;
-  uniform vec4 uShips[2];              // x, z, heading, speed
-  uniform vec2 uShipSize[2];           // half length, half width
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
@@ -130,8 +131,7 @@ const fragment = /* glsl */`
   uniform vec2 uCoastRot[${MAX_ISLES}]; // cos/sin of island yaw
   uniform vec2 uSeaCenter;
   uniform float uFarPlane;
-  uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
-  uniform vec4 uTrailShape[${TRAIL}];  // direction x/z, strength, half length
+  ${WAKE_GLSL}
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
@@ -190,6 +190,9 @@ const fragment = /* glsl */`
     float near = 1.0 - smoothstep(40.0, 230.0, dist);
     // Medium waves too short for the mesh: they only bend the light, with the same lean-in crests as the swell.
     vec3 n = vNormal;
+    // These short moving fronts need per-pixel normals as well as grid height.
+    // They reflect light as waves instead of painting white rails on the sea.
+    if(detail>0.001)n.xz -= wakeField(p).yz * detail;
     for (int i = 0; i < 4; i++) {
       float fi = float(i);
       vec2 d = normalize(vec2(cos(fi * 2.1 + 0.6), sin(fi * 2.1 + 0.6)));
@@ -371,7 +374,7 @@ export class Sea {
     }
   }
 
-  // Ships leave a fading line of foam behind them.
+  // Ships leave expanding wavelets and fading foam at their actual past positions.
   addWake(dt, ships) {
     const sources = ships.slice(0,2).map(s => ({ id:s, x:s.pos.x, z:s.pos.z, heading:s.heading, speed:s.speed,
       length:s.mesh.userData.length, width:s.mesh.userData.width, active:s.sinking < .3 && !!s.mesh.parent }));
@@ -381,6 +384,7 @@ export class Sea {
       this.uniforms.uShipSize.value[i].set(s?.length/2||0,s?.width/2||0);
     }
     const trail = this.wakes.update(dt,sources), u = this.uniforms.uTrail.value, shape = this.uniforms.uTrailShape.value;
+    wakeSurface.points=trail; wakeSurface.ships=sources;
     for (let i = 0; i < TRAIL; i++) {
       const t = trail[i];
       if (t) { u[i].set(t.x,t.z,t.age,t.width); shape[i].set(t.fx,t.fz,t.strength,t.extent); }

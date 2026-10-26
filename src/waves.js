@@ -1,3 +1,4 @@
+import { wakeHeight } from './wake-field.js';
 // Crossing swell groups with curved fronts and independent 2D envelopes.
 // No random reseeding: flotation and rendering sample the same field.
 export const SWELLS = [
@@ -28,7 +29,7 @@ export function swellHeight(s,x,z,t) {
   const phase=u*s.k+t*s.speed+s.phase+1.4*Math.sin(v*s.k*.37+t*.12+s.phase*2.1);
   return s.amp*packet*Math.sin(phase);
 }
-export const waveHeight = (x,z,t) => SWELLS.reduce((h,s)=>h+swellHeight(s,x,z,t)*swell.k,0);
+export const waveHeight = (x,z,t) => SWELLS.reduce((h,s)=>h+swellHeight(s,x,z,t)*swell.k,0)+wakeHeight(x,z);
 export const PACKET_GLSL = /* glsl */`
   vec3 swellPacket(vec2 p, vec2 dir, float k, float t, float phase) {
     vec2 across=vec2(-dir.y,dir.x);
