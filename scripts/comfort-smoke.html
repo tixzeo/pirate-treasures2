@@ -12,6 +12,8 @@ tick();ok('deck entry',world.setSeaControlMode('deck'));tick(60);
 world.orbit(140,-20);world.zoom(120);tick(120);const view=world.deckCamera.view();
 world.setSeaControlMode('helm');world.setSeaControlMode('deck');tick();
 ok('reentry preserves yaw pitch and distance',JSON.stringify(world.deckCamera.view())===JSON.stringify(view),view);
+// Occlusion bounds follow the displayed pose once per rendered frame.
+world.render();
 const captain=world.crew.captain,bosun=world.crew.bosun,entry=world.crewOcclusion.figures.find(e=>e.figure===bosun);
 ok('actual crew has measured bounds',entry&&entry.bounds.max.every(Number.isFinite)&&entry.bounds.max[1]-entry.bounds.min[1]>1,entry?.bounds);
 // Position the camera behind the actual bosun from the captain. Include the feet,

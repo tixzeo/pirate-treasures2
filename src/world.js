@@ -302,7 +302,7 @@ export class World {
     const b = isl.userData.pier, p = this.player;
     p.pos.set(b.berth.x, p.pos.y, b.berth.z);
     p.heading = wrapAbs(p.heading - b.heading) < Math.PI / 2 ? b.heading : b.heading + Math.PI;
-    p.speed = p.yaw = p.helm = 0;
+    p.resetDynamics();
   }
 
   // Put the ship out in the approach to a berth, lined up with it and stopped.
@@ -311,7 +311,7 @@ export class World {
     const b = isl.userData.pier, p = this.player;
     p.pos.copy(b.berth).addScaledVector(b.dir, dist).setY(0);
     p.heading = b.heading;
-    p.speed = p.yaw = p.helm = 0;
+    p.resetDynamics();
     const cam = p.mesh.userData.metrics.camera;
     this.camPos.copy(p.pos).addScaledVector(b.dir, cam.teleportBack).setY(cam.teleportUp);
   }
@@ -466,8 +466,8 @@ export class World {
         const push = isl.userData.terrain ? terrainPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl) :
           coastPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl.position, min);
         if (push) {
-          if (v === p && p.hp > 0) this.onShoreImpact(v.speed);
-          v.pos.x += push.x; v.pos.z += push.z; v.speed *= .5;
+          const impact=v.resolveContact(push,.5);
+          if (v === p && p.hp > 0) this.onShoreImpact(impact);
         }
       }
     }
@@ -478,9 +478,8 @@ export class World {
         if (v.sinking >= 1) continue;
         const push = pierPush(v.pos, v.heading, v.mesh.userData, b, b.length ?? PIER, PIER_WIDTH);
         if (push) {
-          v.pos.x += push.x; v.pos.z += push.z;
-          if (v === p && Math.abs(v.speed) > 2 && this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }
-          v.speed *= .6;
+          const impact=v.resolveContact(push,.6);
+          if (v === p && impact > 2 && this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }
         }
       }
     }
@@ -559,7 +558,6 @@ export class World {
   updateCamera(dt) {
     if (this.seaControlMode === 'deck') {
       this.deckCamera.update(dt, this.camera, this.player.mesh, this.deckWalker, this.walkNavigation);
-      this.crewOcclusion?.update(this.deckCamera.eye, this.deckWalker.position);
       return;
     }
     const p = this.player, f = p.forward(), cam = p.mesh.userData.metrics.camera;
@@ -590,7 +588,6 @@ export class World {
   sinkBoss(dt) {
     const b = this.boss, before = b.sinking;
     b.throttle = 0; b.rudder = 0;
-    b.speed *= 1 - dt * .8;
     b.sinking = Math.min(1, b.sinking + dt / 12);
     if (before === 0) {
       this.life.launchBoat(b, this.player.pos);
@@ -688,7 +685,7 @@ export class World {
     clearTimeout(this.lossTimer);
     this.setSeaControlMode('helm');
     const p = this.player;
-    p.hp = p.maxHp; p.sinking = 0; p.speed = p.yaw = p.helm = p.rudder = p.throttle = 0;
+    p.hp = p.maxHp; p.sinking = 0; p.resetDynamics();
     this.shoreImpact.reset();
     this.lastDamage = null;
     this.lost = false;
@@ -726,7 +723,7 @@ export class World {
     this.lastDeckPosition = null;
     for (const isl of this.isles) isl.userData.done = false;
     const b = this.boss;
-    b.hp = b.maxHp; b.sinking = 0; b.speed = 0;
+    b.hp = b.maxHp; b.sinking = 0; b.resetDynamics();
     b.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     if (this.bossGone) this.scene.add(b.mesh);
     this.bossBeaten = this.bossGone = false;
@@ -735,7 +732,7 @@ export class World {
     this.fx.clearBalls();
     this.queue = [];
     const p = this.player;
-    p.hp = p.maxHp; p.sinking = 0; p.speed = p.yaw = p.helm = 0; p.heading = 0;
+    p.hp = p.maxHp; p.sinking = 0; p.resetDynamics(); p.heading = 0;
     p.pos.set(0, 0, 0);
     const cam = p.mesh.userData.metrics.camera;
     this.camPos.set(0, cam.teleportUp, cam.resetBack);
@@ -751,10 +748,13 @@ export class World {
     from.y = 0;
     p.pos.copy(from);
     p.heading = 0;
-    p.speed = p.yaw = p.helm = 0;
+    p.resetDynamics();
     const cam = p.mesh.userData.metrics.camera;
     this.camPos.copy(from).add(new THREE.Vector3(0, cam.teleportUp, cam.teleportBack));
   }
 
-  render() { this.post.render(); }
+  render() {
+    if(this.seaControlMode==='deck')this.crewOcclusion?.update(this.deckCamera.eye,this.deckWalker.position);
+    this.post.render();
+  }
 }

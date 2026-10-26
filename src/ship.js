@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
+import { advanceSurge, advanceSteering, advanceHeel, HULL_PHYSICS } from './ship-physics.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -234,6 +235,22 @@ export class Vessel {
   }
 
   get pos() { return this.mesh.position; }
+  resetDynamics() {
+    this.speed=this.yaw=this.helm=this.heel=this.rudder=this.throttle=0;
+    this.motion.reset();
+  }
+  resolveContact(push,retention=.5) {
+    if(!push||![push.x,push.z].every(Number.isFinite))return 0;
+    const depth=Math.hypot(push.x,push.z);if(depth===0)return 0;
+    this.pos.x+=push.x;this.pos.z+=push.z;
+    const f=this.forward(),cosine=(f.x*push.x+f.z*push.z)/depth;
+    const impact=Math.max(0,-this.speed*cosine);
+    if(impact>0){
+      const loss=(1-THREE.MathUtils.clamp(retention,0,1))*cosine*cosine;
+      this.speed*=1-loss;this.yaw*=1-loss;
+    }
+    return impact;
+  }
   forward() { return new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading)); }
   // Unit vector out of the left (port) or right (starboard) side.
   side(which) {
@@ -242,17 +259,13 @@ export class Vessel {
   }
 
   update(dt, t) {
-    const target = this.throttle * this.maxSpeed;
-    // Sails drive her up to speed steadily; the water brakes her hard at speed and gently near a stop, so she coasts a long way.
-    const rate = target * Math.sign(this.speed || target) > Math.abs(this.speed) ? this.maxSpeed * .2 : .25 + Math.abs(this.speed) * .18;
-    this.speed += THREE.MathUtils.clamp(target - this.speed, -rate * dt, rate * dt);
-    this.helm += THREE.MathUtils.clamp(this.rudder - this.helm, -1.8 * dt, 1.8 * dt);
-    const bite = THREE.MathUtils.clamp(Math.abs(this.speed) / (this.maxSpeed * .4), 0, 1);
-    const want = this.helm * this.turnRate * bite * Math.sign(this.speed);
-    this.yaw += (want - this.yaw) * Math.min(1, dt * 1.6);
-    this.heading += this.yaw * dt;
+    const flooded=this.hp<=0||this.sinking>0;
+    this.speed = advanceSurge(this.speed,flooded?0:this.throttle,this.maxSpeed,dt,1+3*this.sinking);
+    if(flooded)this.speed*=Math.exp(-HULL_PHYSICS.floodDrag*Math.max(0,dt));
+    const steering=advanceSteering(this,flooded?0:this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
+    this.helm=steering.helm;this.yaw=steering.yaw;this.heading+=steering.angle;
     this.pos.addScaledVector(this.forward(), this.speed * dt);
-    this.heel += (-this.yaw * .3 - this.heel) * Math.min(1, dt * 2);
+    this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt);
 
     const water = sampleHullWater(waveHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
       length: this.mesh.userData.length, width: this.mesh.userData.width }, t);

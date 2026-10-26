@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Ship physics checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;color:white;background:#10202ddd;padding:8px;pointer-events:none;font:12px monospace}nav{position:fixed;bottom:8px;left:8px;display:flex;gap:6px}button{padding:10px;background:#163642;color:white;border:1px solid #ccc;border-radius:6px}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><nav><button>Ход</button><button>Поворот</button><button>Инерция</button><button>Шторм</button><button>Движение</button></nav><script type="module">
+// Use a separate test origin. Never reset the captain's save or drive his tab.
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[],measurements=[];let animation=0;
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const {world,input}=w.game;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js'),{SimulationClock}=await import('/src/simulation-clock.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);input.throttle=0;world.immortal=true;
+const p=world.player;world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');for(let i=0;i<900;i++)world.atmo.update(1/60,world.camera);
+function reset(v){v.resetDynamics();v.hp=v.maxHp;v.sinking=0;v.heading=0;v.pos.set(1800,0,1800);}
+for(const vessel of [p,world.boss]){
+ const runs=[];
+ for(const fps of [5,30,60,144]){
+  reset(vessel);const clock=new SimulationClock();let steps=0;
+  for(let i=0;i<fps*20;i++)clock.advance(1/fps,(dt,t)=>{steps++;vessel.throttle=t<12?1:0;vessel.rudder=t>4&&t<10?.6:0;vessel.update(dt,t);});
+  const run={length:vessel.mesh.userData.length,fps,steps,position:vessel.pos.toArray(),heading:vessel.heading,speed:vessel.speed};runs.push(run);measurements.push(run);
+  ok(`${run.length}m: ${fps}FPS preserves 20 seconds of physics`,steps===1200&&run.position.every(Number.isFinite),run);
+ }
+ const base=runs[2];for(const run of runs)ok(`${run.length}m: ${run.fps}FPS agrees with 60FPS trajectory`,run.position.every((v,i)=>Math.abs(v-base.position[i])<1e-7)&&Math.abs(run.heading-base.heading)<1e-7,run);
+ reset(vessel);vessel.speed=vessel.maxSpeed;
+ let distance=0,seconds=0;while(vessel.speed>.015&&seconds<60){const before=vessel.pos.clone();vessel.update(1/60,seconds);distance+=Math.hypot(before.x-vessel.pos.x,before.z-vessel.pos.z);seconds+=1/60;}
+ const coast={length:vessel.mesh.userData.length,stopSeconds:seconds,coastDistance:distance};measurements.push(coast);ok(`${coast.length}m: sail-down coasts to rest without reversing`,seconds<60&&vessel.speed===0,coast);
+}
+reset(p);p.throttle=1;p.rudder=1;for(let i=0;i<180;i++)p.update(1/60,i/60);p.resetDynamics();ok('reset clears old turn and roll velocity',p.speed===0&&p.yaw===0&&p.heel===0&&p.motion.rollVelocity===0);
+function draw(time){
+ world.sea.update(time,p.pos);world.camera.position.copy(p.pos).add(new T.Vector3(19,15,38));world.camera.lookAt(p.pos.clone().add(new T.Vector3(0,1,-6)));
+ world.light.position.copy(p.pos).add(new T.Vector3(60,100,35));world.light.target.position.copy(p.pos);world.light.target.updateMatrixWorld();world.scene.updateMatrixWorld(true);world.render();
+}
+function view(name){
+ cancelAnimationFrame(animation);reset(p);world.atmo.setWeather(name==='Шторм'?'storm':'clear');for(let i=0;i<900;i++)world.atmo.update(1/60,world.camera);
+ const clock=new SimulationClock();for(let i=0;i<1200;i++)clock.advance(1/60,(dt,t)=>{p.throttle=name==='Инерция'&&t>7?0:1;p.rudder=name==='Поворот'&&t>3?.8:0;p.update(dt,t);world.sea.addWake(dt,[p]);});
+ draw(20);const state={results,measurements,view:name,speed:p.speed,heading:p.heading,shaders:world.renderer.info.programs.every(p=>p.diagnostics?.runnable!==false)};
+ out.textContent='PASS '+results.length+' physics checks · '+name+' · '+p.speed.toFixed(2)+' m/s';document.body.dataset.result=JSON.stringify(state);
+}
+for(const b of document.querySelectorAll('button'))b.onclick=()=>{
+ if(b.textContent!=='Движение'){view(b.textContent);return;}
+ view('Ход');let last=performance.now(),elapsed=0,frames=0;const motionClock=new SimulationClock(),tick=now=>{
+  const dt=Math.min((now-last)/1000,.2);last=now;elapsed+=dt;frames++;
+  motionClock.advance(dt,(step,t)=>{p.rudder=t>2?.6:0;p.update(step,20+t);world.sea.addWake(step,[p]);});draw(20+motionClock.time);
+  if(elapsed<6)animation=requestAnimationFrame(tick);else{out.textContent='PASS · motion · '+frames+' frames';document.body.dataset.motion=JSON.stringify({frames,elapsed,speed:p.speed,roll:p.mesh.rotation.z});}
+ };animation=requestAnimationFrame(tick);
+};
+w.addEventListener('resize',()=>requestAnimationFrame(()=>draw(20)));view('Ход');
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>

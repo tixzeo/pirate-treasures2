@@ -9,6 +9,7 @@ import { setupGod, putSpecial } from './god.js';
 import { portrait } from './characters.js';
 import { SAILS, sailIndex } from './ship.js';
 import { seaIntent } from './deck-walk.js';
+import { SimulationClock } from './simulation-clock.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -195,20 +196,22 @@ $('go').addEventListener('click', () => {
 ui.mode('intro');
 
 const clock = new THREE.Clock();
-let t = 0;
+const simulation = new SimulationClock();
+document.addEventListener('visibilitychange',()=>{simulation.remainder=0;clock.getDelta();});
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 1 / 20) * speed;
-  t += dt;
+  const elapsed=clock.getDelta();
+  if(document.hidden){simulation.remainder=0;return;}
+  simulation.advance(elapsed,(dt,t)=>{
   updateTweens(dt * 1000);
   if (mode === 'match') {
     match.update(dt, t);
-    match.render();
   } else {
     if (mode === 'sea' && !ui.open) readKeys();
     // Dialogs hold the helm but the sea keeps moving.
     world.update(dt, mode === 'sea' && !ui.open ? input : { throttle: world.player.throttle * .98, rudder: 0 });
-    world.render();
   }
+  },speed);
+  if(mode==='match')match.render();else world.render();
 });
 
 // God menu: testing tools for the prototype.

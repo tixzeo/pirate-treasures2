@@ -8,17 +8,28 @@ const T=await import('/node_modules/three/build/three.module.js');
 w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.resetProgress();world.immortal=false;input.throttle=0;
 world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
 const p=world.player,tick=(n=1)=>{for(let i=0;i<n;i++){g.readInput();world.update(1/60,input)}};tick();
-const isle=world.isles[1],s=isle.userData.terrain;let cell=0;for(let i=1;i<s.field.length;i++)if(s.field[i]<s.field[cell])cell=i;
-const point=new T.Vector3(s.minX+(cell%s.size+.5)*s.cell,0,s.minZ+(Math.floor(cell/s.size)+.5)*s.cell).applyAxisAngle(new T.Vector3(0,1,0),s.yaw).add(isle.position);
-const touch=speed=>{p.pos.copy(point);p.speed=speed;p.heading=p.yaw=p.helm=p.rudder=0;input.throttle=0;tick()};
+const isle=world.isles[1],s=isle.userData.terrain,up=new T.Vector3(0,1,0);let point,normal;
+// Approach a real shore from water, away from the pier. Starting at the deepest
+// land cell with an arbitrary heading does not define an incoming impact.
+for(let z=1;z<s.size-1&&!point;z++)for(let x=1;x<s.size-1;x++){
+ const i=z*s.size+x;if(Math.abs(s.field[i])>s.cell)continue;
+ const n=new T.Vector3(s.field[i+1]-s.field[i-1],0,s.field[i+s.size]-s.field[i-s.size]);if(n.length()<.01)continue;n.normalize();
+ const candidate=new T.Vector3(s.minX+(x+.5)*s.cell,0,s.minZ+(z+.5)*s.cell).addScaledVector(n,-s.field[i]).applyAxisAngle(up,s.yaw).add(isle.position);
+ if(candidate.distanceTo(isle.userData.pier.berth)<45)continue;point=candidate;normal=n.applyAxisAngle(up,s.yaw);break;
+}
+if(!point)throw Error('No test shore found');let contactStart;
+const touch=(speed,escape=false)=>{p.pos.copy(point).addScaledVector(normal,p.mesh.userData.length*.45);p.speed=speed;p.heading=Math.atan2(normal.x,normal.z)+(escape?Math.PI:0);p.yaw=p.helm=p.rudder=0;contactStart=p.pos.clone();input.throttle=0;tick()};
 const initial=p.hp;touch(1.5);ok('gentle actual shore contact has no damage',p.hp===initial);
 world.setSeaControlMode('deck');touch(6);const after=p.hp;
 ok('fast actual shore contact damages hull',after<initial&&initial-after<=25,{before:initial,after});
-ok('shore still separates hull and reduces speed',p.pos.distanceTo(point)>1&&p.speed<3,p.speed);
+// The curved coast may give the long hull a slightly oblique normal; require
+// substantial energy loss rather than the old fixed halving of all velocity.
+ok('shore separates hull and dissipates incoming motion',p.pos.distanceTo(contactStart)>.2&&p.speed<6*.6,{speed:p.speed,separation:p.pos.distanceTo(contactStart)});
 ok('impact feedback is triggered',Math.abs(world.bumpAt-world.time)<1e-6&&w.document.getElementById('flash').textContent.includes('Берег'));
 ok('sailing deck remains allowed outside combat',world.seaControlMode==='deck');
 touch(14);ok('same contact cannot charge again next frame',p.hp===after);
 p.speed=0;tick(90);world.immortal=true;touch(14);ok('God immortality prevents coast damage',p.hp===after);world.immortal=false;
+world.shoreImpact.reset();touch(6,true);ok('separating shore contact does not charge damage or trap departing hull',p.hp===after&&p.speed>5,{hp:p.hp,speed:p.speed});
 world.shoreImpact.reset();p.hp=3;world.boss.hp=77;const gold=w.document.getElementById('gold').textContent;touch(8);
 ok('fatal grounding enters loss and leaves deck',p.hp===0&&world.lost&&world.seaControlMode==='helm');
 await new Promise(r=>setTimeout(r,1300));ok('grounding gets its own repair dialog',world.ui.open&&w.document.querySelector('#dialog h2').textContent.includes('берег'));
