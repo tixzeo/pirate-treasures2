@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import * as THREE from 'three';import {Vessel} from '../src/ship.js';
+import {SimulationClock} from '../src/simulation-clock.js';
 export function vessel(length=32,width=6.5){const mesh=new THREE.Group();mesh.userData={length,width,sails:[]};return new Vessel(mesh);}
 test('reset clears stored angular energy, controls and forward speed at a new location',()=>{
  const ship=vessel();ship.throttle=1;ship.rudder=1;for(let i=0;i<120;i++)ship.update(1/60,i/60);
@@ -21,4 +22,10 @@ test('dead or flooding ships cannot generate sail thrust and retain staged sinki
   ship.speed=10;for(let i=0;i<300;i++)ship.update(1/60,i/60);assert.ok(ship.speed<.1);
   ship.sinking=1;ship.update(1/60,5);assert.ok(ship.pos.y< -20);assert.ok(ship.mesh.rotation.x>.8);
  }
+});
+test('real vessel path, heading and wave pose agree across 5..144 render FPS',()=>{
+ const run=fps=>{const ship=vessel(),clock=new SimulationClock();for(let i=0;i<fps*20;i++)clock.advance(1/fps,(dt,t)=>{
+  ship.throttle=t<12?1:0;ship.rudder=t>4&&t<10?.6:0;ship.update(dt,t);
+ });return {position:ship.pos.toArray(),heading:ship.heading,speed:ship.speed,roll:ship.mesh.rotation.z,pitch:ship.mesh.rotation.x};};
+ const expected=run(60);for(const fps of [5,30,144]){const actual=run(fps);actual.position.forEach((v,i)=>assert.ok(Math.abs(v-expected.position[i])<1e-8));for(const k of ['heading','speed','roll','pitch'])assert.ok(Math.abs(actual[k]-expected[k])<1e-8);}
 });

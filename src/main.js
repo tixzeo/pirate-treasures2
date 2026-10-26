@@ -197,7 +197,7 @@ ui.mode('intro');
 
 const clock = new THREE.Clock();
 const simulation = new SimulationClock();
-addEventListener('visibilitychange',()=>{simulation.remainder=0;clock.getDelta();});
+document.addEventListener('visibilitychange',()=>{simulation.remainder=0;clock.getDelta();});
 renderer.setAnimationLoop(() => {
   const elapsed=clock.getDelta();
   if(document.hidden){simulation.remainder=0;return;}
