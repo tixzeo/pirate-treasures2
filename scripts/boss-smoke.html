@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Boss finish smoke</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;background:#10202ddd;color:white;font:12px monospace;max-width:90%;white-space:pre-wrap;pointer-events:none}</style></head><body><iframe></iframe><pre>Loading…</pre><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+const KEY='pirates2-save',stored=()=>JSON.parse(localStorage.getItem(KEY)||'null');
+const until=async(test,ms=600000)=>{const end=performance.now()+ms;while(!test()){if(performance.now()>end)throw Error('Fixture wait timed out');await new Promise(r=>setTimeout(r,30))}};
+// This origin's own save only: the fixture starts and ends with it empty.
+const boot=async()=>{const w=frame.contentWindow;await until(()=>w.game&&w.game.world);const g=w.game;await g.world.kitDone;await until(()=>g.world.crew.captain&&g.world.crew.tim);return {w,g};};
+try{
+localStorage.removeItem(KEY);frame.src='/?q=low';await new Promise(r=>frame.addEventListener('load',r,{once:true}));
+let {w,g}=await boot();const {world,input}=g,doc=w.document,gold=()=>+doc.getElementById('gold').textContent;
+doc.getElementById('go').click();world.renderer.setAnimationLoop(null);world.resetProgress();world.immortal=true;input.throttle=0;
+const p=world.player,b=world.boss,dt=1/60;let time=0;
+const tick=(n=1)=>{for(let i=0;i<n;i++){world.update(dt,{throttle:0,rudder:0});time+=dt}};
+p.pos.copy(b.pos);p.pos.x+=60;p.resetDynamics();b.resetDynamics();b.throttle=0;tick(30);
+ok('battle starts near Scar',world.state==='battle',{state:world.state});
+// The camera's view direction must turn smoothly through the kill, the sinking and the wreck leaving the scene.
+const camDir=()=>{const e=world.camera.matrixWorld.elements;return [-e[8],-e[9],-e[10]]};
+const angle=(a,c)=>Math.acos(Math.min(1,a[0]*c[0]+a[1]*c[1]+a[2]*c[2]))*180/Math.PI;
+const settle=()=>{for(let i=0;i<180;i++){b.pos.set(p.pos.x-60,b.pos.y,p.pos.z);b.speed=0;p.speed=0;tick();world.camera.updateMatrixWorld()}};settle();
+b.hp=0;let last=(world.camera.updateMatrixWorld(),camDir()),maxTurn=0,dialogAt=null,timAt=null,goneAt=null;const killed=time;
+tick();ok('kill pays the reward once and saves it',gold()===500&&stored()?.gold===500&&stored()?.bossBeaten===true&&world.bossBeaten,{gold:gold(),save:stored()});
+while(goneAt===null||time-killed<goneAt+3){
+ tick();world.camera.updateMatrixWorld();const d=camDir();maxTurn=Math.max(maxTurn,angle(last,d));last=d;
+ if(dialogAt===null&&world.ui.open)dialogAt=time-killed;if(timAt===null&&world.crew.tim.visible)timAt=time-killed;
+ if(goneAt===null&&world.bossGone)goneAt=time-killed;
+ if(time-killed>20)break;
+}
+ok('camera never jumps while the boss sinks and leaves',maxTurn<1,{maxTurnDeg:+maxTurn.toFixed(3)});
+ok('wreck leaves the scene within ten seconds',world.bossGone&&!b.mesh.parent&&goneAt<=10,{goneAt});
+ok('victory story about five seconds after the kill',dialogAt>4.5&&dialogAt<5.6,{dialogAt});
+ok('Tim climbs aboard with the victory story',timAt!==null&&Math.abs(timAt-dialogAt)<.05,{timAt,dialogAt});
+ok('victory dialog shows the paid reward',doc.querySelector('#dialog h2').textContent==='Победа!'&&doc.querySelector('#dialog .haul').textContent==='+500 золота',{h:doc.querySelector('#dialog h2').textContent,haul:doc.querySelector('#dialog .haul').textContent});
+ok('gold is not paid twice by the story',gold()===500&&stored().gold===500,{gold:gold()});
+[...doc.querySelectorAll('#dialog button')].find(x=>x.textContent==='Йо-хо-хо!').click();ok('dialog closes',!world.ui.open);
+ok('next goal is an island, not Scar',world.target()?.kind!=='boss',{target:world.target()});
+// A fresh page load restores the beaten boss from the save and pays nothing more.
+frame.contentWindow.location.reload();await new Promise(r=>frame.addEventListener('load',r,{once:true}));
+({w,g}=await boot());const doc2=w.document,world2=g.world;await until(()=>world2.crew.tim);
+world2.renderer.setAnimationLoop(null);for(let i=0;i<60;i++)world2.update(dt,{throttle:0,rudder:0});
+ok('reload keeps the gold',+doc2.getElementById('gold').textContent===500&&stored().gold===500,{gold:doc2.getElementById('gold').textContent});
+ok('reload keeps Scar beaten and gone',world2.bossBeaten&&world2.bossGone&&!world2.boss.mesh.parent&&world2.state==='sail',{beaten:world2.bossBeaten,gone:world2.bossGone,state:world2.state});
+ok('reload keeps Tim aboard and no replayed story',world2.crew.tim.visible&&!world2.ui.open,{tim:world2.crew.tim.visible,open:world2.ui.open});
+out.textContent=`PASS ${results.length} boss finish checks · dialog ${dialogAt.toFixed(2)} s · max turn ${maxTurn.toFixed(3)}°\n`+JSON.stringify({results},null,1);
+}catch(e){out.textContent='FAIL '+e.message+'\n'+JSON.stringify({results},null,1)}
+finally{localStorage.removeItem(KEY)}
+</script></body></html>
