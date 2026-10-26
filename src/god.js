@@ -70,7 +70,7 @@ export function setupGod(api) {
 
   function render() {
     const isles = api.isles();
-    const inMatch = api.mode() === 'match';
+    const inMatch = api.mode() === 'island';
     panel.innerHTML = `
       <header><b>God-меню</b><button type="button" class="ghost" data-a="close">✕</button></header>
       <section>
