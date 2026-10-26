@@ -6,6 +6,7 @@ import { UI } from './ui.js';
 import { updateTweens } from './tween.js';
 import { sfx, setMuted, muted } from './sound.js';
 import { loadSave, writeSave, clearSave } from './save.js';
+import { BOSS_REWARD } from './boss-finish.js';
 import { setupGod } from './god.js';
 import { portrait } from './characters.js';
 import { SAILS, sailIndex } from './ship.js';
@@ -38,13 +39,13 @@ ui.setGold(save.gold);
 world.applySave(save);
 world.onGold = addGold;
 world.onBossBeaten = persist;
-// The victory story waits until the schooner has gone under.
-world.onBossGone = () => ui.dialog({
+// The victory story starts once the schooner's hull is under; her masts go down behind the dialog.
+world.onVictory = () => ui.dialog({
   title: 'Победа!',
   icon: 'crown',
   who: 'tim_cabin_boy',
   text: 'Шрам уплывает на шлюпке, грозя кулаком. А из воды к вам карабкается мальчишка: «Я больше не служу Шраму! Возьмите меня юнгой, я знаю все его хитрости». Юнга Тим теперь в команде.',
-  gold: 500,
+  gold: BOSS_REWARD,
   buttons: [['Йо-хо-хо!', () => ui.closeDialog()]],
 });
 
