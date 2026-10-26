@@ -1,0 +1,42 @@
+{
+  "results": [
+    {
+      "name": "far sea meets the reflection plane at y=0",
+      "pass": true
+    },
+    {
+      "name": "low far scene renders with valid shaders and restored water",
+      "pass": true
+    },
+    {
+      "name": "low near scene renders with valid shaders and restored water",
+      "pass": true
+    },
+    {
+      "name": "medium far scene renders with valid shaders and restored water",
+      "pass": true
+    },
+    {
+      "name": "medium near scene renders with valid shaders and restored water",
+      "pass": true
+    },
+    {
+      "name": "high far scene renders with valid shaders and restored water",
+      "pass": true
+    },
+    {
+      "name": "high near scene renders with valid shaders and restored water",
+      "pass": true
+    }
+  ],
+  "quality": "high",
+  "view": "far",
+  "reflectionSeen": true,
+  "stats": {
+    "frame": 118,
+    "calls": 973,
+    "triangles": 1529337,
+    "points": 900,
+    "lines": 0
+  }
+}

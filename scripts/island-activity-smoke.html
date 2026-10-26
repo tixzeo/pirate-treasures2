@@ -51,9 +51,11 @@ try{
  ok('fake win uses shared dialog and waits for confirmation',world.ui.open&&!world.isles[1].userData.done&&gold()===before);
  returnButton();ok('fake win credits exactly 10 and marks done',g.mode==='sea'&&world.isles[1].userData.done&&gold()===before+10&&calls.stop===1);
  finish({win:true,gold:999});ok('late completion after sea return cannot duplicate reward',gold()===before+10&&!world.ui.open);
+ land(2);const returnBase=gold();end({win:false,gold:2});returnButton();
+ ok('loss return credits partial gold without marking island complete',g.mode==='sea'&&!world.isles[2].userData.done&&gold()===returnBase+2);
  land(2);const oldEnd=end,lossBase=gold();end({win:false,gold:3});
  [...w.document.querySelectorAll('#dialog button')].find(b=>b.textContent==='Ещё раз').click();
- ok('loss retry credits partial gold, keeps island open and restarts activity',gold()===lossBase+3&&!world.isles[2].userData.done&&calls.start===3&&!world.ui.open);
+ ok('loss retry credits partial gold, keeps island open and restarts activity',gold()===lossBase+3&&!world.isles[2].userData.done&&calls.start===4&&!world.ui.open);
  oldEnd({win:true,gold:999});ok('previous retry callback is stale',!world.ui.open&&gold()===lossBase+3);
  end({win:true,gold:0});returnButton();
  const saved=JSON.parse(w.localStorage.getItem('pirates2-save'));

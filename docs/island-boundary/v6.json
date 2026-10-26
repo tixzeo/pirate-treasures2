@@ -1,0 +1,71 @@
+{
+  "results": [
+    {
+      "name": "V6 brig loaded",
+      "pass": true,
+      "detail": "morskoy_strannik_v6"
+    },
+    {
+      "name": "all 16 embedded images decoded",
+      "pass": true,
+      "detail": {
+        "images": 16,
+        "mappedMeshes": 31
+      }
+    },
+    {
+      "name": "PBR UV maps retained",
+      "pass": true
+    },
+    {
+      "name": "both four-gun broadsides",
+      "pass": true
+    },
+    {
+      "name": "nine moving sails",
+      "pass": true
+    },
+    {
+      "name": "boss retains own 15m class",
+      "pass": true
+    },
+    {
+      "name": "deck entry",
+      "pass": true
+    },
+    {
+      "name": "captain on measured floor",
+      "pass": true
+    },
+    {
+      "name": "moving crew fades",
+      "pass": true
+    },
+    {
+      "name": "moving crew restores opacity",
+      "pass": true
+    },
+    {
+      "name": "WebGL has no error",
+      "pass": true
+    },
+    {
+      "name": "all shader programs runnable",
+      "pass": true
+    }
+  ],
+  "geometry": {
+    "meshes": 54,
+    "width": 6.49833345413208,
+    "deckY": 2.0599799156188965,
+    "helm": {
+      "diameter": 1.3,
+      "scale": 0.6486938905939899,
+      "pivot": [
+        0,
+        4.79826021194458,
+        13.35272741317749
+      ]
+    }
+  }
+}

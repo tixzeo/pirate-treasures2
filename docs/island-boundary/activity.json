@@ -1,0 +1,192 @@
+{
+  "results": [
+    {
+      "name": "default adapter starts match-3 in island mode with the existing HUD",
+      "pass": true
+    },
+    {
+      "name": "God adds match moves through adapter",
+      "pass": true
+    },
+    {
+      "name": "all three God special-piece commands reach match adapter",
+      "pass": true
+    },
+    {
+      "name": "God shuffle resolves through adapter",
+      "pass": true
+    },
+    {
+      "name": "actual match-3 move still plays and consumes one move",
+      "pass": true
+    },
+    {
+      "name": "leaving during cascade does not mutate the next board",
+      "pass": true
+    },
+    {
+      "name": "old delayed match victory cannot complete a new visit",
+      "pass": true
+    },
+    {
+      "name": "God win shows the unchanged shared reward dialog",
+      "pass": true
+    },
+    {
+      "name": "default reward, done and sea return are preserved",
+      "pass": true
+    },
+    {
+      "name": "land starts a registered fake activity with complete context",
+      "pass": true
+    },
+    {
+      "name": "main dispatches activity update, render and resize",
+      "pass": true,
+      "detail": {
+        "start": 4,
+        "stop": 4,
+        "update": 7,
+        "render": 1,
+        "resize": 5,
+        "debug": 0
+      }
+    },
+    {
+      "name": "custom activity does not expose the default board or its HUD",
+      "pass": true
+    },
+    {
+      "name": "match-only God actions are no-ops for another activity",
+      "pass": true
+    },
+    {
+      "name": "fake win uses shared dialog and waits for confirmation",
+      "pass": true
+    },
+    {
+      "name": "fake win credits exactly 10 and marks done",
+      "pass": true
+    },
+    {
+      "name": "late completion after sea return cannot duplicate reward",
+      "pass": true
+    },
+    {
+      "name": "loss return credits partial gold without marking island complete",
+      "pass": true
+    },
+    {
+      "name": "loss retry credits partial gold, keeps island open and restarts activity",
+      "pass": true
+    },
+    {
+      "name": "previous retry callback is stale",
+      "pass": true
+    },
+    {
+      "name": "existing save shape is retained",
+      "pass": true
+    },
+    {
+      "name": "world terrain query island_lagoon",
+      "pass": true,
+      "detail": {
+        "error": 5.329070518200751e-15,
+        "bounds": {
+          "minX": -95.97240558521074,
+          "maxX": 275.9724055852107,
+          "minY": -7.01657247543335,
+          "maxY": 5.119825839996338,
+          "minZ": -738.3858690755742,
+          "maxZ": -401.6141309244258
+        }
+      }
+    },
+    {
+      "name": "world terrain query island_cove_small",
+      "pass": true,
+      "detail": {
+        "error": 5.329070518200751e-15,
+        "bounds": {
+          "minX": -634.8029682351255,
+          "maxX": -265.1970317648745,
+          "minY": -9.6762056350708,
+          "maxY": 6.401582717895508,
+          "minZ": -1262.2261914447595,
+          "maxZ": -897.7738085552405
+        }
+      }
+    },
+    {
+      "name": "world terrain query island_volcanic",
+      "pass": true,
+      "detail": {
+        "error": 0,
+        "bounds": {
+          "minX": 126.3819892177529,
+          "maxX": 533.6180107822471,
+          "minY": -11.696660995483398,
+          "maxY": 37.73213577270508,
+          "minZ": -1778.278315308009,
+          "maxZ": -1341.721684691991
+        }
+      }
+    },
+    {
+      "name": "world terrain query island_crescent_bay",
+      "pass": true,
+      "detail": {
+        "error": 3.019806626980426e-14,
+        "bounds": {
+          "minX": -611.5365873760529,
+          "maxX": -348.4634126239471,
+          "minY": -3.9775047302246094,
+          "maxY": 5.555459499359131,
+          "minZ": -464.1380613675557,
+          "maxZ": -195.8619386324443
+        }
+      }
+    },
+    {
+      "name": "world terrain query island_jungle_ruins",
+      "pass": true,
+      "detail": {
+        "error": 1.0658141036401503e-14,
+        "bounds": {
+          "minX": 431.57016095115364,
+          "maxX": 768.4298390488464,
+          "minY": -6.673905849456787,
+          "maxY": 7.826410293579102,
+          "minZ": -933.9021050439846,
+          "maxZ": -626.0978949560154
+        }
+      }
+    },
+    {
+      "name": "world terrain query island_fortress_rock",
+      "pass": true,
+      "detail": {
+        "error": 3.552713678800501e-15,
+        "bounds": {
+          "minX": -365.1575616163298,
+          "maxX": -174.84243838367018,
+          "minY": -4.002222061157227,
+          "maxY": 11.73515510559082,
+          "minZ": 360.21568126171843,
+          "maxZ": 539.7843187382816
+        }
+      }
+    },
+    {
+      "name": "saved gold, completed islands and boss flag survive reload",
+      "pass": true
+    },
+    {
+      "name": "new page restores core fallback registration",
+      "pass": true
+    }
+  ],
+  "checks": 28,
+  "saveCompatible": true
+}

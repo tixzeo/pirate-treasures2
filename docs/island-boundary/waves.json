@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "name": "CPU flotation and GPU packets agree in clear and storm water",
+      "pass": true,
+      "detail": {
+        "maxError": 0.000043790002289434415,
+        "samples": 24
+      }
+    },
+    {
+      "name": "wave variety adds no vertices",
+      "pass": true
+    }
+  ],
+  "view": "clear",
+  "time": 18,
+  "stats": {
+    "calls": 604,
+    "triangles": 672545,
+    "geometries": 599,
+    "textures": 307
+  }
+}
