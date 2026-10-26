@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Shore impact and battle helm smoke</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;background:#10202ddd;color:white;font:12px monospace;max-width:90%;white-space:pre-wrap;pointer-events:none}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><script type="module">
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const g=w.game,{world,input}=g;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js');
+w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.resetProgress();world.immortal=false;input.throttle=0;
+world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
+const p=world.player,tick=(n=1)=>{for(let i=0;i<n;i++){g.readInput();world.update(1/60,input)}};tick();
+const isle=world.isles[1],s=isle.userData.terrain;let cell=0;for(let i=1;i<s.field.length;i++)if(s.field[i]<s.field[cell])cell=i;
+const point=new T.Vector3(s.minX+(cell%s.size+.5)*s.cell,0,s.minZ+(Math.floor(cell/s.size)+.5)*s.cell).applyAxisAngle(new T.Vector3(0,1,0),s.yaw).add(isle.position);
+const touch=speed=>{p.pos.copy(point);p.speed=speed;p.heading=p.yaw=p.helm=p.rudder=0;input.throttle=0;tick()};
+const initial=p.hp;touch(1.5);ok('gentle actual shore contact has no damage',p.hp===initial);
+world.setSeaControlMode('deck');touch(6);const after=p.hp;
+ok('fast actual shore contact damages hull',after<initial&&initial-after<=25,{before:initial,after});
+ok('shore still separates hull and reduces speed',p.pos.distanceTo(point)>1&&p.speed<3,p.speed);
+ok('impact feedback is triggered',Math.abs(world.bumpAt-world.time)<1e-6&&w.document.getElementById('flash').textContent.includes('Берег'));
+ok('sailing deck remains allowed outside combat',world.seaControlMode==='deck');
+touch(14);ok('same contact cannot charge again next frame',p.hp===after);
+p.speed=0;tick(90);world.immortal=true;touch(14);ok('God immortality prevents coast damage',p.hp===after);world.immortal=false;
+world.shoreImpact.reset();p.hp=3;world.boss.hp=77;const gold=w.document.getElementById('gold').textContent;touch(8);
+ok('fatal grounding enters loss and leaves deck',p.hp===0&&world.lost&&world.seaControlMode==='helm');
+await new Promise(r=>setTimeout(r,1300));ok('grounding gets its own repair dialog',world.ui.open&&w.document.querySelector('#dialog h2').textContent.includes('берег'));
+input.throttle=1;w.document.querySelector('#dialog .btns button').click();
+ok('repair returns to safe water with sails down',p.hp===p.maxHp&&p.sinking===0&&p.pos.length()<1e-5&&input.throttle===0&&!world.ui.open&&!world.lost);
+ok('shore repair preserves boss health and gold',world.boss.hp===77&&w.document.getElementById('gold').textContent===gold);
+world.teleport(world.boss.pos,65);ok('deck available before battle starts',world.setSeaControlMode('deck'));
+world.startBattle();tick();ok('battle start forcibly returns to helm',world.state==='battle'&&world.seaControlMode==='helm');
+ok('battle rejects deck via API and UI',!world.setSeaControlMode('deck')&&!world.canDeckWalk()&&w.document.getElementById('deckToggle').disabled);
+w.dispatchEvent(new w.KeyboardEvent('keydown',{code:'KeyF',bubbles:true}));w.dispatchEvent(new w.KeyboardEvent('keyup',{code:'KeyF',bubbles:true}));
+ok('battle F stays at helm with an explanation',world.seaControlMode==='helm'&&w.document.getElementById('flash').textContent.includes('бою'));
+world.fire('left');ok('returned helm can fire',world.queue.length===4);
+tick(60);world.render();out.textContent='PASS '+results.length+' safety checks';document.body.dataset.result=JSON.stringify({results});
+w.addEventListener('resize',()=>requestAnimationFrame(()=>{world.updateCamera(1);world.render()}));
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>

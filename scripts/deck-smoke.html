@@ -7,6 +7,8 @@ while(!w.game)await new Promise(r=>setTimeout(r,30));const g=w.game,{world,input
 while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
 const T=await import('/node_modules/three/build/three.module.js'),{deckClear}=await import('/src/deck-walk.js');
 w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);world.resetProgress();
+// This fixture tests controls/camera while sailing; damage has its own fixture.
+world.immortal=true;
 world.atmo.auto=false;world.atmo.setTime(13);world.atmo.setWeather('clear');
 const tick=(n=1)=>{for(let i=0;i<n;i++){g.readInput();world.update(1/60,input)}};
 const key=(code,type='keydown')=>w.dispatchEvent(new w.KeyboardEvent(type,{code,bubbles:true}));
@@ -49,10 +51,10 @@ world.setSeaControlMode('deck');p.hp=0;tick();ok('damage safely exits deck',worl
 world.teleportBerth(world.isles[0],0);input.throttle=0;tick();world.setSeaControlMode('deck');g.land();
 ok('landing exits deck and starts match',world.seaControlMode==='helm'&&g.mode==='match');w.document.getElementById('leave').click();
 ok('return from match restores helm',g.mode==='sea'&&world.seaControlMode==='helm');
-world.setSeaControlMode('deck');world.teleport(world.boss.pos,65);world.startBattle();tick();
-ok('battle camera and helm survive teleport',world.state==='battle'&&world.seaControlMode==='helm'&&world.camera.position.toArray().every(Number.isFinite));
-world.setSeaControlMode('deck');tick();w.document.getElementById('deckToggle').click();tick();ok('returning from battle deck restores battle helm',world.seaControlMode==='helm'&&world.state==='battle');
-world.resetProgress();input.throttle=0;world.teleport(new T.Vector3(),0);world.setSeaControlMode('deck');tick(60);
+world.teleport(world.boss.pos,65);world.setSeaControlMode('deck');world.startBattle();tick();
+ok('battle forces helm from deck',world.state==='battle'&&world.seaControlMode==='helm'&&world.camera.position.toArray().every(Number.isFinite));
+const battleEntry=world.setSeaControlMode('deck');tick();tap('KeyF');ok('battle rejects deck and disables UI toggle',!battleEntry&&world.seaControlMode==='helm'&&w.document.getElementById('deckToggle').disabled);
+world.resetProgress();world.immortal=false;input.throttle=0;world.teleport(new T.Vector3(),0);world.setSeaControlMode('deck');tick(60);
 ok('reset permits a fresh deck session',world.seaControlMode==='deck'&&deckClear(world.deckWalker.zone,captain.position.x,captain.position.z));
 // Standard third person: W follows the view after a quarter/half turn. Input
 // still reaches the real keyboard handler and the world's collision controller.
