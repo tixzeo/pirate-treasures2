@@ -1,0 +1,84 @@
+{
+  "results": [
+    {
+      "name": "gentle actual shore contact has no damage",
+      "pass": true
+    },
+    {
+      "name": "fast actual shore contact damages hull",
+      "pass": true,
+      "detail": {
+        "before": 100,
+        "after": 89
+      }
+    },
+    {
+      "name": "shore separates hull and dissipates incoming motion",
+      "pass": true,
+      "detail": {
+        "speed": 3.0456755682973595,
+        "separation": 2.0854501969208066
+      }
+    },
+    {
+      "name": "impact feedback is triggered",
+      "pass": true
+    },
+    {
+      "name": "sailing deck remains allowed outside combat",
+      "pass": true
+    },
+    {
+      "name": "same contact cannot charge again next frame",
+      "pass": true
+    },
+    {
+      "name": "God immortality prevents coast damage",
+      "pass": true
+    },
+    {
+      "name": "separating shore contact does not charge damage or trap departing hull",
+      "pass": true,
+      "detail": {
+        "hp": 89,
+        "speed": 5.978242823791535
+      }
+    },
+    {
+      "name": "fatal grounding enters loss and leaves deck",
+      "pass": true
+    },
+    {
+      "name": "grounding gets its own repair dialog",
+      "pass": true
+    },
+    {
+      "name": "repair returns to safe water with sails down",
+      "pass": true
+    },
+    {
+      "name": "shore repair preserves boss health and gold",
+      "pass": true
+    },
+    {
+      "name": "deck available before battle starts",
+      "pass": true
+    },
+    {
+      "name": "battle start forcibly returns to helm",
+      "pass": true
+    },
+    {
+      "name": "battle rejects deck via API and UI",
+      "pass": true
+    },
+    {
+      "name": "battle F stays at helm with an explanation",
+      "pass": true
+    },
+    {
+      "name": "returned helm can fire",
+      "pass": true
+    }
+  ]
+}

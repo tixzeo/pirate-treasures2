@@ -1,0 +1,58 @@
+{
+  "results": [
+    {
+      "name": "deck entry",
+      "pass": true
+    },
+    {
+      "name": "reentry preserves yaw pitch and distance",
+      "pass": true,
+      "detail": {
+        "yaw": -0.84,
+        "pitch": 0.3,
+        "distance": 4.735486776633378
+      }
+    },
+    {
+      "name": "actual crew has measured bounds",
+      "pass": true,
+      "detail": {
+        "min": [
+          -1.5576366937113773,
+          2.059979915618897,
+          -3.455943540970322
+        ],
+        "max": [
+          -0.548414368181682,
+          3.7599799156188967,
+          -2.51027556430332
+        ]
+      }
+    },
+    {
+      "name": "foreground bosun fades",
+      "pass": true
+    },
+    {
+      "name": "helm restores original crew materials",
+      "pass": true
+    },
+    {
+      "name": "storm under full sail keeps bounded smooth hull pose",
+      "pass": true,
+      "detail": {
+        "maxPitch": 0.07364495812649859,
+        "maxRoll": 0.07610317756921295,
+        "speed": 13.996723349038273
+      }
+    },
+    {
+      "name": "keyboard hint has a dark backing",
+      "pass": true,
+      "detail": {
+        "background": "rgba(5, 19, 29, 0.88)",
+        "color": "rgb(255, 245, 223)"
+      }
+    }
+  ]
+}

@@ -1,0 +1,340 @@
+{
+  "results": [
+    {
+      "name": "32m real submerged hull vertices captured",
+      "pass": true,
+      "detail": {
+        "points": 1050
+      }
+    },
+    {
+      "name": "32m, 0m/s, heading 0.00: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 32,
+        "speed": 0,
+        "heading": 0,
+        "seconds": 60,
+        "minImmersion": 3.132178427649782,
+        "maxLag": 0,
+        "maxPitch": 0.06970050921946686,
+        "maxRoll": 0.07844414671332195,
+        "maxVerticalSpeed": 1.2077084188524134
+      }
+    },
+    {
+      "name": "32m, 0m/s, heading 1.57: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 32,
+        "speed": 0,
+        "heading": 1.5707963267948966,
+        "seconds": 60,
+        "minImmersion": 3.187112469372419,
+        "maxLag": 0,
+        "maxPitch": 0.09746360245222874,
+        "maxRoll": 0.06538874502044914,
+        "maxVerticalSpeed": 1.2176183860246925
+      }
+    },
+    {
+      "name": "32m, 0m/s, heading 2.50: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 32,
+        "speed": 0,
+        "heading": 2.5,
+        "seconds": 60,
+        "minImmersion": 3.2348709407021774,
+        "maxLag": 0,
+        "maxPitch": 0.07031159211115064,
+        "maxRoll": 0.0731095829955225,
+        "maxVerticalSpeed": 1.2362111682122867
+      }
+    },
+    {
+      "name": "32m, 14m/s, heading 0.00: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 32,
+        "speed": 14,
+        "heading": 0,
+        "seconds": 60,
+        "minImmersion": 3.1372810443791486,
+        "maxLag": 0,
+        "maxPitch": 0.06826876491966513,
+        "maxRoll": 0.07953402217120238,
+        "maxVerticalSpeed": 0.8757849933920792
+      }
+    },
+    {
+      "name": "32m, 14m/s, heading 1.57: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 32,
+        "speed": 14,
+        "heading": 1.5707963267948966,
+        "seconds": 60,
+        "minImmersion": 3.1763612847151537,
+        "maxLag": 0,
+        "maxPitch": 0.0947683943318014,
+        "maxRoll": 0.05025548601328729,
+        "maxVerticalSpeed": 3.438712306446531
+      }
+    },
+    {
+      "name": "32m, 14m/s, heading 2.50: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 32,
+        "speed": 14,
+        "heading": 2.5,
+        "seconds": 60,
+        "minImmersion": 3.233941039944451,
+        "maxLag": 0,
+        "maxPitch": 0.06136988676468212,
+        "maxRoll": 0.07601299414411233,
+        "maxVerticalSpeed": 1.0691864427506537
+      }
+    },
+    {
+      "name": "15m real submerged hull vertices captured",
+      "pass": true,
+      "detail": {
+        "points": 28
+      }
+    },
+    {
+      "name": "15m, 0m/s, heading 0.00: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 15,
+        "speed": 0,
+        "heading": 0,
+        "seconds": 60,
+        "minImmersion": 1.6519746469990322,
+        "maxLag": 0,
+        "maxPitch": 0.1,
+        "maxRoll": 0.12100185374605671,
+        "maxVerticalSpeed": 1.7139726351683104
+      }
+    },
+    {
+      "name": "15m, 0m/s, heading 1.57: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 15,
+        "speed": 0,
+        "heading": 1.5707963267948966,
+        "seconds": 60,
+        "minImmersion": 1.7031950452989806,
+        "maxLag": 0,
+        "maxPitch": 0.09995349059345222,
+        "maxRoll": 0.09035070441832108,
+        "maxVerticalSpeed": 1.5287690736360005
+      }
+    },
+    {
+      "name": "15m, 0m/s, heading 2.50: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 15,
+        "speed": 0,
+        "heading": 2.5,
+        "seconds": 60,
+        "minImmersion": 1.6835668673018749,
+        "maxLag": 0,
+        "maxPitch": 0.09937654683527106,
+        "maxRoll": 0.09096819068134453,
+        "maxVerticalSpeed": 1.423326093846432
+      }
+    },
+    {
+      "name": "15m, 9m/s, heading 0.00: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 15,
+        "speed": 9,
+        "heading": 0,
+        "seconds": 60,
+        "minImmersion": 1.6549851386431536,
+        "maxLag": 0,
+        "maxPitch": 0.1,
+        "maxRoll": 0.11240921481791791,
+        "maxVerticalSpeed": 1.6804387097684015
+      }
+    },
+    {
+      "name": "15m, 9m/s, heading 1.57: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 15,
+        "speed": 9,
+        "heading": 1.5707963267948966,
+        "seconds": 60,
+        "minImmersion": 1.6698179981927344,
+        "maxLag": 0,
+        "maxPitch": 0.09999243085714575,
+        "maxRoll": 0.08950444209927393,
+        "maxVerticalSpeed": 1.990084331744828
+      }
+    },
+    {
+      "name": "15m, 9m/s, heading 2.50: no fully airborne hull or delayed heave",
+      "pass": true,
+      "detail": {
+        "length": 15,
+        "speed": 9,
+        "heading": 2.5,
+        "seconds": 60,
+        "minImmersion": 1.6832189365022834,
+        "maxLag": 0,
+        "maxPitch": 0.08943992063724562,
+        "maxRoll": 0.09096820524165092,
+        "maxVerticalSpeed": 2.0007613615732667
+      }
+    },
+    {
+      "name": "storm waterline snapshot has valid shaders",
+      "pass": true
+    }
+  ],
+  "measurements": [
+    {
+      "length": 32,
+      "speed": 0,
+      "heading": 0,
+      "seconds": 60,
+      "minImmersion": 3.132178427649782,
+      "maxLag": 0,
+      "maxPitch": 0.06970050921946686,
+      "maxRoll": 0.07844414671332195,
+      "maxVerticalSpeed": 1.2077084188524134
+    },
+    {
+      "length": 32,
+      "speed": 0,
+      "heading": 1.5707963267948966,
+      "seconds": 60,
+      "minImmersion": 3.187112469372419,
+      "maxLag": 0,
+      "maxPitch": 0.09746360245222874,
+      "maxRoll": 0.06538874502044914,
+      "maxVerticalSpeed": 1.2176183860246925
+    },
+    {
+      "length": 32,
+      "speed": 0,
+      "heading": 2.5,
+      "seconds": 60,
+      "minImmersion": 3.2348709407021774,
+      "maxLag": 0,
+      "maxPitch": 0.07031159211115064,
+      "maxRoll": 0.0731095829955225,
+      "maxVerticalSpeed": 1.2362111682122867
+    },
+    {
+      "length": 32,
+      "speed": 14,
+      "heading": 0,
+      "seconds": 60,
+      "minImmersion": 3.1372810443791486,
+      "maxLag": 0,
+      "maxPitch": 0.06826876491966513,
+      "maxRoll": 0.07953402217120238,
+      "maxVerticalSpeed": 0.8757849933920792
+    },
+    {
+      "length": 32,
+      "speed": 14,
+      "heading": 1.5707963267948966,
+      "seconds": 60,
+      "minImmersion": 3.1763612847151537,
+      "maxLag": 0,
+      "maxPitch": 0.0947683943318014,
+      "maxRoll": 0.05025548601328729,
+      "maxVerticalSpeed": 3.438712306446531
+    },
+    {
+      "length": 32,
+      "speed": 14,
+      "heading": 2.5,
+      "seconds": 60,
+      "minImmersion": 3.233941039944451,
+      "maxLag": 0,
+      "maxPitch": 0.06136988676468212,
+      "maxRoll": 0.07601299414411233,
+      "maxVerticalSpeed": 1.0691864427506537
+    },
+    {
+      "length": 15,
+      "speed": 0,
+      "heading": 0,
+      "seconds": 60,
+      "minImmersion": 1.6519746469990322,
+      "maxLag": 0,
+      "maxPitch": 0.1,
+      "maxRoll": 0.12100185374605671,
+      "maxVerticalSpeed": 1.7139726351683104
+    },
+    {
+      "length": 15,
+      "speed": 0,
+      "heading": 1.5707963267948966,
+      "seconds": 60,
+      "minImmersion": 1.7031950452989806,
+      "maxLag": 0,
+      "maxPitch": 0.09995349059345222,
+      "maxRoll": 0.09035070441832108,
+      "maxVerticalSpeed": 1.5287690736360005
+    },
+    {
+      "length": 15,
+      "speed": 0,
+      "heading": 2.5,
+      "seconds": 60,
+      "minImmersion": 1.6835668673018749,
+      "maxLag": 0,
+      "maxPitch": 0.09937654683527106,
+      "maxRoll": 0.09096819068134453,
+      "maxVerticalSpeed": 1.423326093846432
+    },
+    {
+      "length": 15,
+      "speed": 9,
+      "heading": 0,
+      "seconds": 60,
+      "minImmersion": 1.6549851386431536,
+      "maxLag": 0,
+      "maxPitch": 0.1,
+      "maxRoll": 0.11240921481791791,
+      "maxVerticalSpeed": 1.6804387097684015
+    },
+    {
+      "length": 15,
+      "speed": 9,
+      "heading": 1.5707963267948966,
+      "seconds": 60,
+      "minImmersion": 1.6698179981927344,
+      "maxLag": 0,
+      "maxPitch": 0.09999243085714575,
+      "maxRoll": 0.08950444209927393,
+      "maxVerticalSpeed": 1.990084331744828
+    },
+    {
+      "length": 15,
+      "speed": 9,
+      "heading": 2.5,
+      "seconds": 60,
+      "minImmersion": 1.6832189365022834,
+      "maxLag": 0,
+      "maxPitch": 0.08943992063724562,
+      "maxRoll": 0.09096820524165092,
+      "maxVerticalSpeed": 2.0007613615732667
+    }
+  ],
+  "worst": {
+    "time": 53.81666666666667,
+    "immersion": 3.132178427649782
+  }
+}

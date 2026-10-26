@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { World } from './world.js';
-import { Match3 } from './match3/view.js';
+import { createMatch3Activity } from './match3/activity.js';
+import { registerIslandActivity, islandActivity } from './island-activity.js';
 import { UI } from './ui.js';
 import { updateTweens } from './tween.js';
 import { sfx, setMuted, muted } from './sound.js';
 import { loadSave, writeSave, clearSave } from './save.js';
-import { setupGod, putSpecial } from './god.js';
+import { setupGod } from './god.js';
 import { portrait } from './characters.js';
 import { SAILS, sailIndex } from './ship.js';
 import { seaIntent } from './deck-walk.js';
@@ -22,7 +23,8 @@ const ui = new UI();
 ui.portrait = id => portrait(renderer, id);
 ui.portrait('captain').then(url => { $('introFace').src = url; }, () => {});
 const world = new World(renderer, ui);
-const match = new Match3(renderer, ui);
+registerIslandActivity(createMatch3Activity,{fallback:true});
+const activity=islandActivity();
 let mode = 'intro';
 let speed = 1;
 const save = loadSave();
@@ -50,7 +52,7 @@ function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
   world.resize(w, h);
-  match.resize(w, h);
+  activity.resize(w, h);
 }
 addEventListener('resize', resize);
 resize();
@@ -146,12 +148,13 @@ function land() {
   world.moor(isle);
   const def = isle.userData.def;
   const level = { ...def.level, name: def.name };
-  mode = 'match';
+  mode = 'island';
   clearControlInput();
   setSails(1);
   world.player.throttle = 0;
   world.player.speed = 0;
-  ui.mode('match');
+  ui.mode('island');
+  const ctx={isle,def,level,world,renderer,ui};
   const onEnd = ({ win, gold: g }) => {
     ui.dialog(win ? {
       title: 'Клад добыт!',
@@ -170,15 +173,15 @@ function land() {
       who: 'bosun',
       text: 'Клад так и не нашли, но кое-что команда всё же подобрала. Можно попробовать снова.',
       gold: g,
-      buttons: [['Ещё раз', () => { ui.closeDialog(); addGold(g); match.start(level, onEnd); }],
+      buttons: [['Ещё раз', () => { ui.closeDialog(); addGold(g); activity.start(ctx, onEnd); }],
         ['На корабль', () => { ui.closeDialog(); addGold(g); backToSea(); }]],
     });
   };
-  match.start(level, onEnd);
+  activity.start(ctx, onEnd);
 }
 function backToSea() {
   world.setSeaControlMode('helm'); clearControlInput();
-  match.active = false;
+  activity.stop();
   mode = 'sea';
   ui.mode('sea');
 }
@@ -203,49 +206,46 @@ renderer.setAnimationLoop(() => {
   if(document.hidden){simulation.remainder=0;return;}
   simulation.advance(elapsed,(dt,t)=>{
   updateTweens(dt * 1000);
-  if (mode === 'match') {
-    match.update(dt, t);
+  if (mode === 'island') {
+    activity.update(dt, t);
   } else {
     if (mode === 'sea' && !ui.open) readKeys();
     // Dialogs hold the helm but the sea keeps moving.
     world.update(dt, mode === 'sea' && !ui.open ? input : { throttle: world.player.throttle * .98, rudder: 0 });
   }
   },speed);
-  if(mode==='match')match.render();else world.render();
+  if(mode==='island')activity.render();else world.render();
 });
 
 // God menu: testing tools for the prototype.
+const matchAvailable=()=>mode==='island'&&activity.kind==='match3';
+const matchCommand=(command,...args)=>{if(matchAvailable())return activity.debug(command,...args)};
 setupGod({
   mode: () => mode,
+  matchAvailable,
   isles: () => world.isles.map(i => ({ name: i.userData.def.name, done: i.userData.done })),
   reset() {
     clearSave();
     Object.assign(save, loadSave());
     ui.setGold(save.gold);
     ui.closeDialog();
-    if (mode === 'match') backToSea();
+    if (mode === 'island') backToSea();
     world.resetProgress();
     setSails(1);
     ui.banner('Прогресс сброшен', `Первая цель: ${world.target().name}`, 3000, false);
   },
   addGold,
   teleport(i) {
-    if (mode === 'match') backToSea();
+    if (mode === 'island') backToSea();
     if (i === 'start') world.teleport(new THREE.Vector3(0, 0, -30), 30);
     else if (i === 'boss') world.teleport(world.boss.pos, 95);
     else world.teleportBerth(world.isles[i]);
   },
   toggleIsle(i) { const d = world.isles[i].userData; d.done = !d.done; persist(); },
-  matchWin() {
-    if (mode !== 'match' || match.over) return;
-    const lv = match.level, b = match.board;
-    if (lv.score) b.score = Math.max(b.score, lv.score);
-    for (const t in lv.collect || {}) b.collected[t] = Math.max(b.collected[t] || 0, lv.collect[t]);
-    match.hud(); match.checkEnd();
-  },
-  matchMoves(n) { if (mode === 'match') { match.moves += n; match.hud(); } },
-  matchSpecial(t) { if (mode === 'match' && !match.busy) putSpecial(match, t); },
-  matchShuffle() { if (mode === 'match' && !match.busy) match.play(match.board.shuffle()); },
+  matchWin(){matchCommand('win')},
+  matchMoves(n){matchCommand('moves',n)},
+  matchSpecial(t){matchCommand('special',t)},
+  matchShuffle(){matchCommand('shuffle')},
   sinkBoss() {
     if (world.bossBeaten) return;
     world.boss.hp = 0;
@@ -264,9 +264,11 @@ setupGod({
     seaControlMode: world.seaControlMode,
     hp: world.player.hp, boss: { hp: world.boss.hp, sinking: +world.boss.sinking.toFixed(2), gone: !!world.bossGone },
     target: world.target() && world.target().name,
-    match: mode === 'match' ? { level: match.level.name, moves: match.moves, score: match.board.score, collected: match.board.collected } : null,
+    activity:mode==='island'?{kind:activity.kind}:null,
+    match:matchCommand('state')??null,
   }),
 });
 
 // Handy for checks from the console.
-window.game = { world, match, land, input, readInput: readKeys, get mode() { return mode; } };
+window.game = { world, land, input, readInput: readKeys, registerIslandActivity,
+  get match(){return matchCommand('view')??null},get activity(){return activity},get mode(){return mode} };

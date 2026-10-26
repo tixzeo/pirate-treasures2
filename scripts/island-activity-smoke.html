@@ -1,0 +1,89 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Island activity boundary checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;max-width:95%;white-space:pre-wrap;background:#10202ddd;color:#fff;padding:6px;font:12px monospace;pointer-events:none}button{position:fixed;bottom:8px;left:8px;padding:10px}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><button id="demo" hidden>Показать доску</button><script type="module">
+// This integration fixture writes its own test save. NEVER run on captain origin.
+const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
+const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+const until=async(fn)=>{const deadline=performance.now()+15000;while(!fn()){if(performance.now()>deadline)throw Error('Fixture wait timed out');await new Promise(r=>setTimeout(r,30))}};
+async function ready(){const w=frame.contentWindow;await until(()=>w.game);await w.game.world.kitDone;await until(()=>w.game.world.crew.captain);return w}
+try{
+ if(location.port==='5174')throw Error('Use a separate test port, never captain origin 5174');
+ await new Promise(r=>frame.addEventListener('load',r,{once:true}));let w=await ready(),g=w.game,world=g.world;
+ w.document.getElementById('go').click();g.input.throttle=0;world.resetProgress();
+ const gold=()=>Number(w.document.getElementById('gold').textContent);
+ const god=selector=>w.document.querySelector('.god '+selector).click();
+ const land=index=>{world.teleportBerth(world.isles[index],0);g.input.throttle=0;g.land()};
+ const returnButton=()=>[...w.document.querySelectorAll('#dialog button')].find(b=>b.textContent==='На корабль').click();
+ land(0);await until(()=>g.match&&!g.match.busy);let m=g.match;
+ ok('default adapter starts match-3 in island mode with the existing HUD',g.mode==='island'&&m.active&&!w.document.getElementById('matchHud').hidden&&w.document.getElementById('hud').hidden);
+ w.document.querySelector('.godbtn').click();const beforeMoves=m.moves;god('[data-a="moves"]');ok('God adds match moves through adapter',m.moves===beforeMoves+5);
+ const specials=[];
+ for(const button of w.document.querySelectorAll('.god [data-a="special"]')){
+  button.click();specials.push([...m.meshes.values()].some(mesh=>mesh.userData.t===Number(button.dataset.i)));
+ }
+ ok('all three God special-piece commands reach match adapter',specials.length===3&&specials.every(Boolean));
+ god('[data-a="shuffle"]');await until(()=>!m.busy);ok('God shuffle resolves through adapter',m.board.findMove()!==null);
+ const legal=m.board.findMove(),moves=m.moves;await m.swap(legal[0],legal[1]);await until(()=>!m.busy);
+ ok('actual match-3 move still plays and consumes one move',m.moves===moves-1);
+ // Leave with a clear/drop still animating: old mesh ids are reused on restart
+ // and must not delete pieces or alter the moves of the new board.
+ if(m.over){w.document.getElementById('leave').click();land(0);await until(()=>!g.match.busy);m=g.match;}
+ const pendingMove=m.board.findMove(),score=m.board.score,pending=m.swap(pendingMove[0],pendingMove[1]);
+ await until(()=>m.board.score>score);w.document.getElementById('leave').click();land(0);
+ const freshBoard=g.match.board,freshMoves=g.match.moves;await pending;await until(()=>!g.match.busy);m=g.match;
+ ok('leaving during cascade does not mutate the next board',m.board===freshBoard&&m.moves===freshMoves&&m.meshes.size===64&&m.board.tiles().every(t=>m.meshes.has(t.id))&&!world.ui.open);
+ god('[data-a="win"]');w.document.getElementById('leave').click();land(0);
+ await new Promise(r=>setTimeout(r,650));ok('old delayed match victory cannot complete a new visit',g.mode==='island'&&!world.ui.open);
+ await until(()=>!g.match.busy);m=g.match;const expected=m.gold()+m.moves*5,base=gold();god('[data-a="win"]');await until(()=>world.ui.open);
+ ok('God win shows the unchanged shared reward dialog',w.document.querySelector('#dialog h2').textContent==='Клад добыт!'&&w.document.querySelector('#dialog .haul').textContent.includes(String(expected)));
+ returnButton();ok('default reward, done and sea return are preserved',gold()===base+expected&&world.isles[0].userData.done&&g.mode==='sea'&&!m.active);
+ if(!w.document.querySelector('.god').hidden)w.document.querySelector('.godbtn').click();
+
+ const calls={start:0,stop:0,update:0,render:0,resize:0,debug:0};let ctx,end;
+ g.registerIslandActivity(()=>({kind:'fixture-treasure',start(c,finish){calls.start++;ctx=c;end=finish},stop(){calls.stop++},update(){calls.update++},render(){calls.render++},resize(){calls.resize++},debug(){calls.debug++}}));
+ land(1);await new Promise(r=>setTimeout(r,80));
+ ok('land starts a registered fake activity with complete context',calls.start===1&&g.mode==='island'&&ctx.isle===world.isles[1]&&ctx.def===world.isles[1].userData.def&&ctx.level.name===ctx.def.name&&ctx.world===world&&ctx.renderer===world.renderer&&ctx.ui===world.ui&&Object.isFrozen(ctx));
+ w.dispatchEvent(new w.Event('resize'));ok('main dispatches activity update, render and resize',calls.update>0&&calls.render>0&&calls.resize>0,calls);
+ ok('custom activity does not expose the default board or its HUD',g.match===null&&w.document.getElementById('matchHud').hidden);
+ w.document.querySelector('.godbtn').click();const oldMoves=m.moves;
+ for(const selector of ['[data-a="moves"]','[data-a="special"]','[data-a="shuffle"]','[data-a="win"]'])god(selector);
+ ok('match-only God actions are no-ops for another activity',calls.debug===0&&m.moves===oldMoves&&!world.ui.open);
+ w.document.querySelector('.godbtn').click();
+ const before=gold(),finish=end;finish({win:true,gold:10});finish({win:true,gold:999});
+ ok('fake win uses shared dialog and waits for confirmation',world.ui.open&&!world.isles[1].userData.done&&gold()===before);
+ returnButton();ok('fake win credits exactly 10 and marks done',g.mode==='sea'&&world.isles[1].userData.done&&gold()===before+10&&calls.stop===1);
+ finish({win:true,gold:999});ok('late completion after sea return cannot duplicate reward',gold()===before+10&&!world.ui.open);
+ land(2);const returnBase=gold();end({win:false,gold:2});returnButton();
+ ok('loss return credits partial gold without marking island complete',g.mode==='sea'&&!world.isles[2].userData.done&&gold()===returnBase+2);
+ land(2);const oldEnd=end,lossBase=gold();end({win:false,gold:3});
+ [...w.document.querySelectorAll('#dialog button')].find(b=>b.textContent==='Ещё раз').click();
+ ok('loss retry credits partial gold, keeps island open and restarts activity',gold()===lossBase+3&&!world.isles[2].userData.done&&calls.start===4&&!world.ui.open);
+ oldEnd({win:true,gold:999});ok('previous retry callback is stale',!world.ui.open&&gold()===lossBase+3);
+ end({win:true,gold:0});returnButton();
+ const saved=JSON.parse(w.localStorage.getItem('pirates2-save'));
+ ok('existing save shape is retained',saved.gold===gold()&&saved.done.length===3&&saved.bossBeaten===false&&!('activity' in saved));
+
+ // Run exported ground queries in the iframe's module realm, where its private
+ // surface cache belongs; do not accidentally test an empty parent-realm cache.
+ const probe=w.document.createElement('script');probe.type='module';probe.textContent=`
+ import {groundHeightAt,islandBounds} from '/src/island.js';
+ const checks=[];for(const isle of [...game.world.isles,...game.world.scenery]){
+  const frame=isle.userData.model,b=islandBounds(isle);let error=0;
+  for(const prop of isle.userData.terrain.props.slice(0,5)){
+   const p=frame.localToWorld(isle.position.clone().set(prop.position[0],prop.groundY,prop.position[2]));
+   const h=groundHeightAt(isle,p.x,p.z);error=Math.max(error,h===null?999:Math.abs(h-p.y));
+  }
+  checks.push({name:'world terrain query '+isle.userData.kit,pass:!!b&&Object.isFrozen(b)&&error<0.0001&&groundHeightAt(isle,b.maxX+100,b.maxZ+100)===null,detail:{error,bounds:b}});
+ }document.body.dataset.groundChecks=JSON.stringify(checks);`;
+ w.document.head.append(probe);await until(()=>w.document.body.dataset.groundChecks);
+ for(const check of JSON.parse(w.document.body.dataset.groundChecks))ok(check.name,check.pass,check.detail);
+
+ const expectedGold=saved.gold;const loaded=new Promise(r=>frame.addEventListener('load',r,{once:true}));frame.src='/?q=medium&boundary-reload';await loaded;
+ w=await ready();g=w.game;world=g.world;
+ ok('saved gold, completed islands and boss flag survive reload',Number(w.document.getElementById('gold').textContent)===expectedGold&&world.isles.every(i=>i.userData.done)&&!world.bossBeaten);
+ ok('new page restores core fallback registration',g.activity.kind===null&&g.mode==='intro');
+ const result={results,checks:results.length,saveCompatible:true};document.body.dataset.result=JSON.stringify(result);out.textContent='PASS '+results.length+' island boundary checks';
+ const demo=document.getElementById('demo');demo.hidden=false;demo.onclick=async()=>{
+  w.document.getElementById('go').click();g.input.throttle=0;world.isles[0].userData.done=false;world.teleportBerth(world.isles[0],0);g.land();await until(()=>g.match&&!g.match.busy);
+  document.body.dataset.demo='match3';
+ };
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { boundsOf } from './ship-layout.js';
 import { flatten, mergeStatic } from './merge.js';
 import { makeIslandShape, shoreDistance } from './island-shape.js';
-import { groundProbe, groundedAnchor } from './island-ground.js';
+import { groundProbe, groundedAnchor, makeGroundSurface } from './island-ground.js';
 import { makeIslandFoundation } from './island-solid.js';
 import { scatterIslandProps, scatterSources } from './island-scatter.js';
 
@@ -155,10 +155,11 @@ export function fitIslandV3(src, shore, dir, seed = 1, isleScale = 2.5, library 
     m.position.set(nativeDir.x * coast, .35, nativeDir.z * coast); model.add(m);
   }
   model.traverse(o => { if (o.isMesh) { o.castShadow = !/island_v3_(water|foundation)/.test(o.material.name); o.receiveShadow = true; } });
+  const groundSurface=makeGroundSurface(ground);
   mergeStatic(model, /(?!)/);
   terrain.scatter = scatterIslandProps(model,scatterSources(props,library),terrain,probe,shore,nativeDir,seed);
   const wrap = new THREE.Group(); wrap.add(model);
   wrap.rotation.y = dir ? Math.atan2(dir.x, dir.z) - Math.atan2(nativeDir.x, nativeDir.z) : seed * 2.39;
   terrain.yaw = wrap.rotation.y;
-  return { wrap, terrain, coast, scale, vertical, propScale };
+  return { wrap, terrain, coast, scale, vertical, propScale, groundSurface };
 }

@@ -16,6 +16,16 @@ for (const name of ISLAND_V3) {
   islands.set(name, fitIslandV3(scene, 55, null, 1));
 }
 
+test('read-only ground queries match the planted terrain on all six real assets',()=>{
+  for(const [name,fit] of islands){
+    for(const prop of fit.terrain.props){
+      const [x,,z]=prop.position, y=fit.groundSurface.heightAt(x,z);
+      assert.ok(y!==null&&Math.abs(y-prop.groundY)<1e-6,name+': '+prop.name);
+    }
+    assert.equal(fit.groundSurface.heightAt(10000,10000),null);
+  }
+});
+
 test('all six real V3 assets fit, with finite coast fields and bounded mesh counts', () => {
   assert.equal(islands.size, 6);
   const signatures = new Set();

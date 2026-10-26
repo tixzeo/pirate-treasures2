@@ -49,7 +49,7 @@ w.dispatchEvent(new w.Event('blur'));tick();ok('focus loss clears walking input'
 world.ui.dialog({title:'Smoke',text:'Input focus',buttons:[['Close',()=>world.ui.closeDialog()]]});tick();ok('dialog safely exits deck',world.seaControlMode==='helm');world.ui.closeDialog();
 world.setSeaControlMode('deck');p.hp=0;tick();ok('damage safely exits deck',world.seaControlMode==='helm');p.hp=p.maxHp;p.sinking=0;world.lost=false;
 world.teleportBerth(world.isles[0],0);input.throttle=0;tick();world.setSeaControlMode('deck');g.land();
-ok('landing exits deck and starts match',world.seaControlMode==='helm'&&g.mode==='match');w.document.getElementById('leave').click();
+ok('landing exits deck and starts island activity',world.seaControlMode==='helm'&&g.mode==='island');w.document.getElementById('leave').click();
 ok('return from match restores helm',g.mode==='sea'&&world.seaControlMode==='helm');
 world.teleport(world.boss.pos,65);world.setSeaControlMode('deck');world.startBattle();tick();
 ok('battle forces helm from deck',world.state==='battle'&&world.seaControlMode==='helm'&&world.camera.position.toArray().every(Number.isFinite));
