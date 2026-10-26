@@ -382,7 +382,10 @@ export class Match3 {
     this.select(null);
     const gold = win ? this.gold() + this.moves * 5 : Math.floor(this.gold() / 2);
     sfx(win ? 'win' : 'lose');
-    setTimeout(() => this.onEnd({ win, gold, score: this.board.score, movesLeft: this.moves }), 500);
+    // Keep the completion attached to the visit that finished. A new activity
+    // may start before this delay expires; never call its replacement callback.
+    const onEnd=this.onEnd, result={win,gold,score:this.board.score,movesLeft:this.moves};
+    setTimeout(() => onEnd(result), 500);
   }
 
   update(dt, t) {
