@@ -1,27 +1,22 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
-
-// A few long swells added together. Ships read waveHeight() to bob on the same waves the shader draws.
-const SWELLS = [
-  { dir: [1, .3], len: 38, amp: .55, speed: 1.1 },
-  { dir: [-.4, 1], len: 21, amp: .3, speed: 1.5 },
-  { dir: [.8, -.7], len: 11, amp: .14, speed: 2.2 },
-  { dir: [-1, -.2], len: 6.5, amp: .06, speed: 3.1 },
-];
-for (const s of SWELLS) { const l = Math.hypot(...s.dir); s.dir = [s.dir[0] / l, s.dir[1] / l]; s.k = Math.PI * 2 / s.len; }
-
-// Rough weather lifts every swell by this factor, in the mesh and in what ships ride on.
-export const swell = { k: 1 };
-
-export function waveHeight(x, z, t) {
-  let h = 0;
-  for (const s of SWELLS) h += s.amp * swell.k * Math.sin((x * s.dir[0] + z * s.dir[1]) * s.k + t * s.speed);
-  return h;
-}
+import { SWELLS, swell, PACKET_GLSL } from './waves.js';
+import { WakeTrail, WAKE } from './wake.js';
+export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
-export const MAX_ISLES = 8, TRAIL = 28;
+export const MAX_ISLES = 8, TRAIL = WAKE.capacity;
+
+// The detailed grid remains local and cheap. Two distant triangles continue the
+// sea underneath far-away islands, beyond the fully fogged edge of that grid.
+export function makeSeaBackdrop(material = new THREE.MeshBasicMaterial({color:'#bddde8',fog:false})) {
+  const geometry = new THREE.PlaneGeometry(12000,12000);
+  geometry.rotateX(-Math.PI/2);
+  const mesh = new THREE.Mesh(geometry,material);
+  mesh.position.y=0; mesh.frustumCulled=false;
+  return mesh;
+}
 
 const CHOP = 1.8; // how far crests lean together (Gerstner); 0 gives plain sines
 
@@ -29,24 +24,31 @@ const vertex = /* glsl */`
   uniform float uTime;
   uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
   uniform float uAmp[4];
+  uniform float uPhase[4];
+  uniform vec2 uSeaCenter;
+  uniform float uFarPlane;
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
+  ${PACKET_GLSL}
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vec2 base = w.xz;
+    vec2 gridOffset = abs(base-uSeaCenter);
+    float detail = (1.0-uFarPlane) * (1.0-smoothstep(${(SIZE * .34).toFixed(1)},${(SIZE * .48).toFixed(1)},max(gridOffset.x,gridOffset.y)));
     float h = 0.0;
     vec3 n = vec3(0.0, 1.0, 0.0);
     for (int i = 0; i < 4; i++) {
       vec2 d = uSwell[i].xy;
-      float k = uSwell[i].z, a = uAmp[i];
-      float ph = dot(base, d) * k + uTime * uSwell[i].w;
+      float k = uSwell[i].z, a = uAmp[i]*detail;
+      vec3 packet = swellPacket(base, d, k, uTime, uPhase[i]);
+      float ph = dot(base, d) * k + uTime * uSwell[i].w + uPhase[i];
       float s = sin(ph), c = cos(ph);
-      h += a * s;
+      h += a * packet.x * s;
       // Gerstner: points slide toward the crest, so crests sharpen and troughs widen.
-      w.xz += ${CHOP.toFixed(2)} * a * d * c;
-      n.xz -= d * k * a * c;
-      n.y -= ${CHOP.toFixed(2)} * k * a * s;
+      w.xz += ${CHOP.toFixed(2)} * a * packet.x * d * c;
+      n.xz -= d * k * a * packet.x * c + packet.yz * a * s;
+      n.y -= ${CHOP.toFixed(2)} * k * a * packet.x * s;
     }
     w.y += h;
     vWorld = w.xyz;
@@ -126,7 +128,10 @@ const fragment = /* glsl */`
   uniform sampler2D uCoastAtlas;
   uniform vec3 uCoastGrid[${MAX_ISLES}]; // local grid min x/z, cell metres (0 = legacy)
   uniform vec2 uCoastRot[${MAX_ISLES}]; // cos/sin of island yaw
+  uniform vec2 uSeaCenter;
+  uniform float uFarPlane;
   uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
+  uniform vec4 uTrailShape[${TRAIL}];  // direction x/z, strength, half length
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
@@ -164,27 +169,23 @@ const fragment = /* glsl */`
     return col + uSunColor * (pow(sun, 8.0) * 0.2 + pow(sun, 90.0) * 0.8);
   }
 
-  // Foam a ship pushes aside: a band around the hull, heaviest at the bow, and the two arms of the wake behind.
+  // Only the pressure band moves with the hull. Wake history stays in the sea.
   float shipFoam(vec2 p, vec4 ship, vec2 size) {
-    if (ship.w <= 0.05) return 0.0;
+    if (abs(ship.w) <= 1.0 || size.x <= 0.0 || size.y <= 0.0) return 0.0;
     vec2 f = vec2(-sin(ship.z), -cos(ship.z)), r = vec2(cos(ship.z), -sin(ship.z));
     vec2 d = p - ship.xy;
-    float u = dot(d, f), v = dot(d, r);
-    float pace = clamp(ship.w / 8.0, 0.0, 1.0);
+    float u = dot(d, f) * sign(ship.w), v = dot(d, r);
+    float pace = smoothstep(1.0, 10.0, abs(ship.w));
     float e = length(vec2(u / (size.x * 1.05), v / (size.y * 1.25)));
-    float hull = (1.0 - smoothstep(1.0, 1.25 + pace * 0.35, e)) * (0.45 + 0.55 * clamp(u / size.x * 0.8 + 0.3, 0.0, 1.0));
-    float behind = -u - size.x * 0.8;
-    float arm = 0.0;
-    if (behind > 0.0) {
-      float spread = behind * 0.36 + size.y * 0.8;
-      arm = 1.0 - smoothstep(0.0, 0.9 + behind * 0.04, abs(abs(v) - spread));
-      arm *= 1.0 - smoothstep(0.0, 70.0 * pace + 5.0, behind);
-    }
-    return clamp(hull + arm * 0.8, 0.0, 1.0) * (0.25 + 0.75 * pace);
+    float hull = 1.0 - smoothstep(0.04, 0.3, abs(e - 1.0));
+    return hull * smoothstep(-0.25, 0.9, u / size.x) * pace;
   }
 
   void main() {
     vec2 p = vWorld.xz;
+    vec2 gridOffset = abs(p-uSeaCenter);
+    float detail = (1.0-uFarPlane) * (1.0-smoothstep(${(SIZE * .34).toFixed(1)},${(SIZE * .48).toFixed(1)},max(gridOffset.x,gridOffset.y)));
+    if(uFarPlane>0.5 && max(gridOffset.x,gridOffset.y)<${(SIZE * .47).toFixed(1)}) discard;
     float dist = length(cameraPosition - vWorld);
     float near = 1.0 - smoothstep(40.0, 230.0, dist);
     // Medium waves too short for the mesh: they only bend the light, with the same lean-in crests as the swell.
@@ -198,8 +199,9 @@ const fragment = /* glsl */`
       n.y -= 1.2 * k * a * sin(ph) * near;
     }
     // Two layers of small ripples drifting across each other so the sun breaks into sparkles.
-    vec3 r1 = texture2D(uRipples, p * 0.045 + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
-    vec3 r2 = texture2D(uRipples, p * 0.083 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
+    vec2 rippleWarp = 0.18 * sin(p.yx * vec2(0.031,0.023) + uTime * vec2(0.11,-0.07));
+    vec3 r1 = texture2D(uRipples, p * 0.045 + rippleWarp + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
+    vec3 r2 = texture2D(uRipples, p * 0.083 - rippleWarp * 0.73 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
     n = normalize(n + vec3(r1.x + r2.x * 0.7, 0.0, r1.y + r2.y * 0.7) * uRippleK * (0.75 * near + 0.1));
 
     vec3 view = normalize(cameraPosition - vWorld);
@@ -211,8 +213,8 @@ const fragment = /* glsl */`
     for (int i = 0; i < ${MAX_ISLES}; i++) {
       if (uIsles[i].z <= 0.0) continue;
       float d = shoreAt(p, i);
-      // Stop crests drawing through low sand/grass. Real pools and open bays
-      // remain water because they are absent from the physical land field.
+      // Outer-coast atlas also masks enclosed basins: their calm water is a
+      // separate opaque mesh. Open bays remain connected to the ocean.
       if (uCoastGrid[i].z > 0.0 && d < 0.0) discard;
       lagoon = max(lagoon, 1.0 - smoothstep(0.0, 24.0, d));
       sand = max(sand, 1.0 - smoothstep(-2.0, 7.0, d));
@@ -235,12 +237,17 @@ const fragment = /* glsl */`
 
     // What the surface mirrors: the sky, and on high quality the islands and ships too.
     vec3 mirror = skyColor(reflect(-view, n));
-    if (uUseRefl > 0.5) {
+    // Planar reflection belongs to the near y=0 surface. Fade it with the same
+    // weight as geometric waves so the far sea cannot form a second mirror.
+    if (uUseRefl > 0.5 && detail > 0.001) {
       vec4 rc = uReflMatrix * vec4(vWorld, 1.0);
       if (rc.w > 0.0) {
         vec2 ruv = rc.xy / rc.w + n.xz * 0.12;
         vec2 edge = smoothstep(vec2(0.0), vec2(0.05), min(ruv, 1.0 - ruv));
-        mirror = mix(mirror, texture2D(uRefl, clamp(ruv, 0.001, 0.999)).rgb, edge.x * edge.y * 0.8);
+        vec4 reflected = texture2D(uRefl, clamp(ruv, 0.001, 0.999));
+        // The target contains scene objects over transparent clear. Sky uses
+        // skyColor on both water surfaces, avoiding a bright full-width seam.
+        mirror = mix(mirror, reflected.rgb / max(reflected.a,0.001), edge.x * edge.y * 0.8 * detail * reflected.a);
       }
     }
     vec3 col = mix(body, mirror, fres * 0.85);
@@ -252,19 +259,29 @@ const fragment = /* glsl */`
 
     // Foam on wave crests, at the shore, around the hulls and in the wakes.
     float crest = smoothstep(0.78 - uWhite * 0.35, 1.1, vHeight + (noise(p * 0.7 + uTime * 0.3) - 0.5) * 0.4);
+    // Breaking fronts have gaps and quiet patches.
+    crest *= mix(0.25, 1.0, smoothstep(0.22, 0.72, noise(p * 0.033 + uTime * vec2(0.035,-0.018))));
     float wake = 0.0;
     for (int i = 0; i < ${TRAIL}; i++) {
       vec4 t = uTrail[i];
       if (t.w <= 0.0) continue;
-      float d = length(p - t.xy);
-      float w = t.w * (0.5 + t.z * 1.6);
-      wake = max(wake, (1.0 - smoothstep(w * 0.4, w, d)) * (1.0 - t.z));
+      vec4 shape = uTrailShape[i];
+      vec2 off = p - t.xy;
+      float along = dot(off, shape.xy), across = dot(off, vec2(-shape.y,shape.x));
+      float width = t.w * (0.7 + t.z * 1.1), extent = shape.w + t.z * 2.0;
+      if (abs(along) > extent || abs(across) > width * 1.2) continue;
+      // A small meander breaks the outline; no noise or texture lookup per patch.
+      across += sin(along * 0.8 + dot(t.xy,vec2(1.7,2.3))) * width * 0.15;
+      float deposit = 1.0 - smoothstep(0.05, 1.0, length(vec2(along/extent,across/width)));
+      wake = max(wake, deposit * pow(1.0-t.z,1.6) * shape.z);
     }
     float ships = max(shipFoam(p, uShips[0], uShipSize[0]), shipFoam(p, uShips[1], uShipSize[1]));
-    // Foam is lace, not paint: the more of it there is, the more of the pattern fills in.
+    // Texture coverage stays porous even when hull, wake and surf overlap.
     float lace = texture2D(uFoam, p * 0.11 + uTime * vec2(0.012, 0.004)).a * 0.65 + texture2D(uFoam, p * 0.27 - uTime * vec2(0.006, 0.015)).a * 0.35;
-    float amount = clamp(crest * 0.55 + surf * 0.95 + wake * 0.7 + ships, 0.0, 1.0);
-    float foam = amount * smoothstep(0.12, 0.5, lace + amount * 0.45);
+    float breakup = smoothstep(0.23,0.72,noise(p * 0.19 + uTime * vec2(0.018,-0.011)));
+    float grain = smoothstep(0.22,0.8,lace);
+    float shipFoamAmount = max(wake * 0.72, ships * 0.7) * mix(0.25,1.0,breakup);
+    float foam = max(max(crest * 0.48, surf * 0.64),shipFoamAmount) * grain;
     col = mix(col, vec3(0.95, 0.98, 1.0) * (0.2 + 0.8 * uLight), foam);
 
     col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, dist));
@@ -279,10 +296,12 @@ export class Sea {
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
     geo.rotateX(-Math.PI / 2);
     const fog = scene.fog;
+    this.fog=fog;
     this.uniforms = {
       uTime: { value: 0 },
       uSwell: { value: SWELLS.map(s => new THREE.Vector4(s.dir[0], s.dir[1], s.k, s.speed)) },
       uAmp: { value: SWELLS.map(s => s.amp) },
+      uPhase: { value: SWELLS.map(s => s.phase) },
       uSunDir: { value: sunDir.clone().normalize() },
       uSunColor: { value: new THREE.Color('#fff2d0') },
       uDeep: { value: new THREE.Color('#06374f') },
@@ -309,14 +328,18 @@ export class Sea {
       uCoastAtlas: { value: new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1) },
       uCoastGrid: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector3()) },
       uCoastRot: { value: Array.from({ length: MAX_ISLES }, () => new THREE.Vector2(1, 0)) },
+      uSeaCenter: { value: new THREE.Vector2() },
+      uFarPlane: { value: 0 },
       uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
+      uTrailShape: { value: Array.from({ length: TRAIL }, () => new THREE.Vector4()) },
     };
     this.uniforms.uRefl.value.needsUpdate = true;
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vertex, fragmentShader: fragment }));
+    this.backdrop=makeSeaBackdrop(new THREE.ShaderMaterial({ uniforms: {...this.uniforms,uFarPlane:{value:1}}, vertexShader:vertex, fragmentShader:fragment }));
+    scene.add(this.backdrop);
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
-    this.trail = [];
-    this.trailT = 0;
+    this.wakes = new WakeTrail();
     // Артем's ripple normal map and foam pattern take over from the generated stand-ins once they are in.
     const tex = new THREE.TextureLoader(), base = import.meta.env ? import.meta.env.BASE_URL : './';
     tex.load(`${base}textures/sea/sea_ripple_normal_1024.png`, t => {
@@ -350,26 +373,18 @@ export class Sea {
 
   // Ships leave a fading line of foam behind them.
   addWake(dt, ships) {
-    ships.slice(0, 2).forEach((s, i) => {
-      const live = s.sinking < .3 && s.mesh.parent;
-      this.uniforms.uShips.value[i].set(s.pos.x, s.pos.z, s.heading, live ? Math.abs(s.speed) : 0);
-      this.uniforms.uShipSize.value[i].set(s.mesh.userData.length / 2, s.mesh.userData.width / 2);
-    });
-    this.trailT -= dt;
-    if (this.trailT <= 0) {
-      this.trailT = .09;
-      for (const s of ships) {
-        if (Math.abs(s.speed) < 1 || s.sinking >= 1) continue;
-        const back = s.forward().multiplyScalar(-s.mesh.userData.length * .45);
-        this.trail.push({ x: s.pos.x + back.x, z: s.pos.z + back.z, age: 0, w: s.mesh.userData.width * .55 * Math.min(1, Math.abs(s.speed) / 8) });
-      }
+    const sources = ships.slice(0,2).map(s => ({ id:s, x:s.pos.x, z:s.pos.z, heading:s.heading, speed:s.speed,
+      length:s.mesh.userData.length, width:s.mesh.userData.width, active:s.sinking < .3 && !!s.mesh.parent }));
+    for (let i=0;i<2;i++) {
+      const s=sources[i];
+      this.uniforms.uShips.value[i].set(s?.x??0,s?.z??0,s?.heading??0,s?.active?s.speed:0);
+      this.uniforms.uShipSize.value[i].set(s?.length/2||0,s?.width/2||0);
     }
-    for (const t of this.trail) t.age += dt / 3.2;
-    this.trail = this.trail.filter(t => t.age < 1).slice(-TRAIL);
-    const u = this.uniforms.uTrail.value;
+    const trail = this.wakes.update(dt,sources), u = this.uniforms.uTrail.value, shape = this.uniforms.uTrailShape.value;
     for (let i = 0; i < TRAIL; i++) {
-      const t = this.trail[i];
-      if (t) u[i].set(t.x, t.z, t.age, t.w); else u[i].set(0, 0, 0, 0);
+      const t = trail[i];
+      if (t) { u[i].set(t.x,t.z,t.age,t.width); shape[i].set(t.fx,t.fz,t.strength,t.extent); }
+      else { u[i].set(0,0,0,0); shape[i].set(0,0,0,0); }
     }
   }
 
@@ -379,6 +394,9 @@ export class Sea {
     SWELLS.forEach((s, i) => { this.uniforms.uAmp.value[i] = s.amp * swell.k; });
     this.uniforms.uWhite.value = (swell.k - 1) * 1.1;
     this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
+    this.backdrop.position.set(this.mesh.position.x,0,this.mesh.position.z);
+    this.uniforms.uSeaCenter.value.set(this.mesh.position.x,this.mesh.position.z);
+    this.uniforms.uFogNear.value=this.fog.near; this.uniforms.uFogFar.value=this.fog.far;
   }
 }
 
@@ -415,7 +433,7 @@ export function addSky(scene, renderer) {
   const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(72), THREE.MathUtils.degToRad(160));
   u.sunPosition.value.copy(sun);
   scene.add(sky);
-  scene.fog = new THREE.Fog('#b9dbe6', 110, 340);
+  scene.fog = new THREE.Fog('#b9dbe6', 180, 900);
 
   const hemi = new THREE.HemisphereLight('#d6ecff', '#1d5a6a', 1.25);
   scene.add(hemi);

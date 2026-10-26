@@ -1,6 +1,8 @@
 // Sounds made on the fly with WebAudio, like in part one: no audio files to load.
 let ctx = null, master = null;
 export let muted = false;
+// Captain request, 26.10.2026: temporarily silence thunder during playtesting.
+export const THUNDER_ENABLED = false;
 
 function ac() {
   if (!ctx) {
@@ -59,6 +61,6 @@ const SOUNDS = {
 };
 
 export function sfx(name, arg) {
-  if (muted || !SOUNDS[name]) return;
+  if (muted || !SOUNDS[name] || (name === 'thunder' && !THUNDER_ENABLED)) return;
   try { SOUNDS[name](arg); } catch (e) { /* audio is optional */ }
 }

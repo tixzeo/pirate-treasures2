@@ -1,0 +1,102 @@
+{
+  "assetBytes": 4352092,
+  "rows": [
+    {
+      "name": "island_cove_small",
+      "diameter": 97.74999999999999,
+      "scale": 6.683359301059019,
+      "vertical": 4.226927562523498,
+      "propScale": 2,
+      "meshes": 4,
+      "triangles": 6032,
+      "geometryBytes": 760032,
+      "fieldBytes": 65536,
+      "oceanFieldBytes": 0,
+      "cell": 0.8012295081967213,
+      "fitMs": 53.79859999999999
+    },
+    {
+      "name": "island_lagoon",
+      "diameter": 114.99999999999999,
+      "scale": 4.2840372200971695,
+      "vertical": 2.7094630392886248,
+      "propScale": 1.7136148880388677,
+      "meshes": 4,
+      "triangles": 7214,
+      "geometryBytes": 908964,
+      "fieldBytes": 65536,
+      "oceanFieldBytes": 0,
+      "cell": 0.9426229508196722,
+      "fitMs": 38.64100000000002
+    },
+    {
+      "name": "island_volcanic",
+      "diameter": 126.49999999999999,
+      "scale": 6.04251599609073,
+      "vertical": 3.821622669129559,
+      "propScale": 2,
+      "meshes": 3,
+      "triangles": 5708,
+      "geometryBytes": 719208,
+      "fieldBytes": 65536,
+      "oceanFieldBytes": 0,
+      "cell": 1.0368852459016393,
+      "fitMs": 20.462999999999965
+    },
+    {
+      "name": "island_crescent_bay",
+      "diameter": 69,
+      "scale": 3.160362677710969,
+      "vertical": 1.9987888587510632,
+      "propScale": 1.2641450710843876,
+      "meshes": 4,
+      "triangles": 6104,
+      "geometryBytes": 769104,
+      "fieldBytes": 65536,
+      "oceanFieldBytes": 0,
+      "cell": 0.5655737704918032,
+      "fitMs": 21.66919999999999
+    },
+    {
+      "name": "island_jungle_ruins",
+      "diameter": 92,
+      "scale": 3.7293670524935063,
+      "vertical": 2.358658823333642,
+      "propScale": 1.4917468209974025,
+      "meshes": 4,
+      "triangles": 8420,
+      "geometryBytes": 1060920,
+      "fieldBytes": 65536,
+      "oceanFieldBytes": 0,
+      "cell": 0.7540983606557377,
+      "fitMs": 33.87110000000001
+    },
+    {
+      "name": "island_fortress_rock",
+      "diameter": 51.74999999999999,
+      "scale": 1.8746213667034435,
+      "vertical": 1.1856146538401229,
+      "propScale": 0.7498485466813773,
+      "meshes": 3,
+      "triangles": 7164,
+      "geometryBytes": 902664,
+      "fieldBytes": 65536,
+      "oceanFieldBytes": 0,
+      "cell": 0.42418032786885246,
+      "fitMs": 23.553099999999972
+    }
+  ],
+  "atlasBytes": 524288,
+  "legsMetres": [
+    192.35384061671346,
+    247.58836806279893,
+    305.286750449475,
+    215.87033144922904
+  ],
+  "legsSecondsAt14": [
+    13.739560044050961,
+    17.684883433057067,
+    21.806196460676784,
+    15.419309389230646
+  ]
+}

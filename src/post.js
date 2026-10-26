@@ -130,17 +130,24 @@ export class Post {
     m.set(.5, 0, 0, .5, 0, .5, 0, .5, 0, 0, .5, .5, 0, 0, 0, 1);
     m.multiply(vcam.projectionMatrix).multiply(vcam.matrixWorldInverse);
 
-    const seaMesh = world.sea.mesh, rain = world.atmo.rain, rainWas = rain.visible;
-    seaMesh.visible = false; rain.visible = false;
-    renderer.clippingPlanes = [this.plane];
-    renderer.shadowMap.autoUpdate = false;
-    renderer.setRenderTarget(refl);
-    renderer.clear();
-    renderer.render(world.scene, vcam);
-    renderer.setRenderTarget(null);
-    renderer.shadowMap.autoUpdate = true;
-    renderer.clippingPlanes = [];
-    seaMesh.visible = true; rain.visible = rainWas;
+    const hidden = [world.sea.mesh,world.sea.backdrop,world.atmo.rain,world.atmo.sky,world.atmo.dome,
+      world.atmo.clouds,world.atmo.stars,world.atmo.moon,world.atmo.moonGlow].filter(Boolean);
+    const visible = hidden.map(m=>m.visible), backgroundWas=world.scene.background;
+    const planesWas = renderer.clippingPlanes, shadowsWas = renderer.shadowMap.autoUpdate;
+    const clearWas=renderer.getClearColor(new THREE.Color()), alphaWas=renderer.getClearAlpha();
+    // Neither water surface may sample the reflection target while it is being
+    // written. Preserve visibility, including a deliberately hidden far plane.
+    world.sea.uniforms.uUseRefl.value = 0;
+    try {
+      hidden.forEach(m=>{m.visible=false}); world.scene.background=null; renderer.setClearColor(0,0);
+      renderer.clippingPlanes=[this.plane]; renderer.shadowMap.autoUpdate=false;
+      renderer.setRenderTarget(refl); renderer.clear(); renderer.render(world.scene,vcam);
+    } finally {
+      renderer.setRenderTarget(null); renderer.shadowMap.autoUpdate=shadowsWas;
+      renderer.clippingPlanes=planesWas;
+      hidden.forEach((m,i)=>{m.visible=visible[i]}); world.scene.background=backgroundWas;
+      renderer.setClearColor(clearWas,alphaWas);
+    }
     world.sea.uniforms.uUseRefl.value = 1;
   }
 

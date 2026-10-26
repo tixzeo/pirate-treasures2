@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Wake visual checks</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;overflow:hidden}pre{position:fixed;top:0;left:0;padding:8px;background:#10202ddd;color:white;pointer-events:none;font:12px monospace}nav{position:fixed;bottom:8px;left:8px;display:flex;gap:6px}button,select{padding:9px;background:#163642;color:white;border:1px solid #ccc;border-radius:6px}</style></head><body><iframe src="/?q=medium"></iframe><pre>Loading…</pre><nav><button>Ясно</button><button>Шторм</button><button>Поворот</button><button>Остановка</button><button>Задний ход</button><select aria-label="Качество"><option>low</option><option selected>medium</option><option>high</option></select></nav><script type="module">
+// Run on a separate development port: this fixture does not reset saved progress.
+const frame=document.querySelector('iframe'),out=document.querySelector('pre');let current='Ясно',animation=0;
+try{
+await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWindow;while(!w.game)await new Promise(r=>setTimeout(r,30));
+const {world,input}=w.game;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
+const T=await import('/node_modules/three/build/three.module.js');w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);input.throttle=0;
+const style=w.document.createElement('style');style.textContent='body>*:not(canvas){display:none!important}';w.document.head.append(style);
+function view(name){
+ cancelAnimationFrame(animation);
+ current=name;world.atmo.auto=false;world.atmo.setTime(name==='Шторм'?15:13);world.atmo.setWeather(name==='Шторм'?'storm':'clear');for(let i=0;i<900;i++)world.atmo.update(1/60,world.camera);
+ const p=world.player;p.speed=12;p.heading=0;p.yaw=0;p.helm=0;p.rudder=0;p.throttle=0;p.sinking=0;
+ world.sea.wakes.clear();
+ for(let i=0;i<=600;i++){
+  const t=i/60;
+  if(name==='Поворот'){p.pos.set(1800-80*(1-Math.cos(t*.15)),0,1880-80*Math.sin(t*.15));p.heading=t*.15;}
+  else if(name==='Задний ход'){p.pos.set(1800,0,1750+t*5);p.speed=-5;p.heading=0;}
+  else{p.pos.set(1800,0,1920-t*12);p.heading=0;}
+  world.sea.addWake(1/60,[p]);
+ }
+ if(name==='Остановка'){p.speed=0;for(let i=0;i<420;i++)world.sea.addWake(1/60,[p]);}
+ const time=40;p.update(0,time);p.mesh.position.copy(p.pos);world.sea.update(time,p.pos);
+ world.light.position.copy(p.pos).add(new T.Vector3(60,100,35));world.light.target.position.copy(p.pos);world.light.target.updateMatrixWorld();
+ world.camera.position.copy(p.pos).add(new T.Vector3(16,25,62));world.camera.lookAt(p.pos.clone().add(new T.Vector3(0,1,26)));
+ world.scene.updateMatrixWorld(true);world.renderer.info.autoReset=false;world.renderer.info.reset();world.render();
+ const stats={calls:world.renderer.info.render.calls,triangles:world.renderer.info.render.triangles,waterVertices:world.sea.mesh.geometry.attributes.position.count,programs:world.renderer.info.programs.length};
+ const failed=world.renderer.info.programs.some(p=>p.diagnostics?.runnable===false);
+ const result={view:name,quality:world.post.quality,stats,shaderOK:!failed,trail:world.sea.wakes.points.length};
+ out.textContent=(failed?'FAIL':'PASS')+' · '+name+' · '+world.post.quality+' · '+JSON.stringify(stats);document.body.dataset.result=JSON.stringify(result);
+}
+for(const b of document.querySelectorAll('button'))b.onclick=()=>view(b.textContent);
+const sail=document.createElement('button');sail.textContent='Движение';document.querySelector('nav').append(sail);
+sail.onclick=()=>{
+ view('Ясно');let frames=0,last=performance.now(),elapsed=0;
+ const tick=now=>{
+  const dt=Math.min((now-last)/1000,.2);last=now;elapsed+=dt;frames++;
+  const p=world.player;p.throttle=.85;p.rudder=elapsed>2?.35:0;p.update(dt,40+elapsed);p.mesh.position.copy(p.pos);
+  world.sea.addWake(dt,[p]);world.sea.update(40+elapsed,p.pos);
+  world.camera.position.copy(p.pos).add(new T.Vector3(16,25,62));world.camera.lookAt(p.pos.clone().add(new T.Vector3(0,1,26)));
+  world.renderer.info.reset();world.render();
+  if(elapsed<6)animation=requestAnimationFrame(tick);
+  else{out.textContent='PASS · motion · '+frames+' rendered frames';document.body.dataset.motion=JSON.stringify({frames,seconds:elapsed,trail:world.sea.wakes.points.length,shaderOK:!world.renderer.info.programs.some(p=>p.diagnostics?.runnable===false)})}
+ };animation=requestAnimationFrame(tick);
+};
+document.querySelector('select').onchange=e=>{world.post.setQuality(e.target.value);view(current)};w.addEventListener('resize',()=>requestAnimationFrame(()=>view(current)));view(current);
+}catch(e){out.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({error:e.stack})}
+</script></body></html>
+
+
