@@ -1,0 +1,49 @@
+{
+  "note": "Node comparison with the original surge formula; not a GPU/FPS benchmark",
+  "models": [
+    {
+      "maxSpeed": 14,
+      "version": "before",
+      "secondsTo90Percent": 4.499999999999989,
+      "stopSeconds": 13.283333333333573,
+      "stopMetres": 59.01379624330839,
+      "moorThreshold": {
+        "seconds": 9.716666666666729,
+        "distance": 56.9540512085336
+      }
+    },
+    {
+      "maxSpeed": 14,
+      "version": "after",
+      "secondsTo90Percent": 8.633333333333342,
+      "stopSeconds": 33.249999999999396,
+      "stopMetres": 63.34858207493413,
+      "moorThreshold": {
+        "seconds": 11.083333333333464,
+        "distance": 57.069741244995015
+      }
+    },
+    {
+      "maxSpeed": 9,
+      "version": "before",
+      "secondsTo90Percent": 4.499999999999989,
+      "stopSeconds": 11.116666666666799,
+      "stopMetres": 34.346648006362464,
+      "moorThreshold": {
+        "seconds": 7.533333333333312,
+        "distance": 32.28192844052568
+      }
+    },
+    {
+      "maxSpeed": 9,
+      "version": "after",
+      "secondsTo90Percent": 9.466666666666717,
+      "stopSeconds": 31.366666666666166,
+      "stopMetres": 42.0610508441057,
+      "moorThreshold": {
+        "seconds": 9.183333333333369,
+        "distance": 35.76828503882976
+      }
+    }
+  ]
+}
