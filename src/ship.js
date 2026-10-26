@@ -239,6 +239,18 @@ export class Vessel {
     this.speed=this.yaw=this.helm=this.heel=this.rudder=this.throttle=0;
     this.motion.reset();
   }
+  resolveContact(push,retention=.5) {
+    if(!push||![push.x,push.z].every(Number.isFinite))return 0;
+    const depth=Math.hypot(push.x,push.z);if(depth===0)return 0;
+    this.pos.x+=push.x;this.pos.z+=push.z;
+    const f=this.forward(),cosine=(f.x*push.x+f.z*push.z)/depth;
+    const impact=Math.max(0,-this.speed*cosine);
+    if(impact>0){
+      const loss=(1-THREE.MathUtils.clamp(retention,0,1))*cosine*cosine;
+      this.speed*=1-loss;this.yaw*=1-loss;
+    }
+    return impact;
+  }
   forward() { return new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading)); }
   // Unit vector out of the left (port) or right (starboard) side.
   side(which) {

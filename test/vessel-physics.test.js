@@ -9,3 +9,9 @@ test('reset clears stored angular energy, controls and forward speed at a new lo
  ship.update(0,20);assert.ok(ship.mesh.rotation.toArray().slice(0,3).every(Number.isFinite));
  assert.equal(ship.pos.x,1000);assert.equal(ship.pos.z,-2000);
 });
+test('contact dissipates normal approach energy and preserves a glancing escape',()=>{
+ const head=vessel();head.speed=14;head.yaw=.5;assert.equal(head.resolveContact({x:0,z:2},.5),14);assert.equal(head.speed,7);assert.equal(head.yaw,.25);assert.equal(head.pos.z,2);
+ const glance=vessel();glance.speed=14;const impact=glance.resolveContact({x:1,z:.1},.5);assert.ok(impact<2);assert.ok(glance.speed>13.8);
+ const away=vessel();away.speed=-4;away.yaw=.2;assert.equal(away.resolveContact({x:0,z:1},.5),0);assert.equal(away.speed,-4);assert.equal(away.yaw,.2);
+ assert.equal(away.resolveContact({x:NaN,z:0}),0);assert.equal(away.resolveContact({x:0,z:0}),0);
+});

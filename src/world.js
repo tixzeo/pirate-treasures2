@@ -460,8 +460,8 @@ export class World {
         const push = isl.userData.terrain ? terrainPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl) :
           coastPush(v.pos, v.heading, v.mesh.userData.metrics.coast, isl.position, min);
         if (push) {
-          if (v === p && p.hp > 0) this.onShoreImpact(v.speed);
-          v.pos.x += push.x; v.pos.z += push.z; v.speed *= .5;
+          const impact=v.resolveContact(push,.5);
+          if (v === p && p.hp > 0) this.onShoreImpact(impact);
         }
       }
     }
@@ -472,9 +472,8 @@ export class World {
         if (v.sinking >= 1) continue;
         const push = pierPush(v.pos, v.heading, v.mesh.userData, b, b.length ?? PIER, PIER_WIDTH);
         if (push) {
-          v.pos.x += push.x; v.pos.z += push.z;
-          if (v === p && Math.abs(v.speed) > 2 && this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }
-          v.speed *= .6;
+          const impact=v.resolveContact(push,.6);
+          if (v === p && impact > 2 && this.time - (this.bumpAt ?? -9) > .8) { sfx('hit'); this.bumpAt = this.time; }
         }
       }
     }
