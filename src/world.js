@@ -19,6 +19,7 @@ import { DeckCamera, CrewOcclusion } from './deck-camera.js';
 import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
 import { Wind, tackFor } from './wind.js';
+import { collideHulls, ramDamage, RAM } from './ship-contact.js';
 import { BOSS_REWARD, VICTORY_AT, advanceSinking, crossed, BOSS_LOOK, LOOK_UNTIL, easeBossLook } from './boss-finish.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
@@ -462,6 +463,11 @@ export class World {
     }
     p.update(dt, t);
     if (!this.bossGone) this.boss.update(dt, t);
+    // The two ships cannot pass through each other: they bounce, turn, and a hard blow does damage.
+    if (!this.bossGone && p.sinking < 1 && this.boss.sinking < 1) {
+      const hit = collideHulls(p, this.boss);
+      if (hit && hit.closing > RAM.threshold && this.time - (this.rammedAt ?? -9) > RAM.cooldown) this.onRam(hit);
+    }
     this.updateFloaters(dt, t);
     this.life.update(dt, t);
     this.updateDeck(dt, input);
@@ -660,6 +666,22 @@ export class World {
     this.ui.battleHud(null);
     this.ui.banner('«Каракатица» идёт ко дну!', 'Шрам прыгает в шлюпку. Смотрите, как шхуна уходит под воду.', 5000, false);
     this.onGold && this.onGold(BOSS_REWARD);
+  }
+
+  onRam(hit) {
+    this.rammedAt = this.time;
+    const p = this.player, b = this.boss, loss = ramDamage(hit);
+    const mine = this.immortal ? 0 : Math.round(loss.a), his = Math.round(loss.b);
+    p.hp = Math.max(0, p.hp - mine);
+    b.hp = Math.max(0, b.hp - his);
+    if (mine > 0) this.lastDamage = 'ram';
+    const at = new THREE.Vector3(hit.x, 1.5, hit.z);
+    this.fx.burst('debris', at, 6 + Math.min(10, Math.round(hit.closing)), 1.2, 6);
+    this.fx.puff('splash', at.clone().setY(.4), { size: 1 + hit.closing * .1 });
+    sfx('hit');
+    this.shake = Math.max(this.shake ?? 0, Math.min(.8, .2 + hit.closing * .05));
+    this.ui.flash(hit.ramA ? `Таран! «Каракатица» −${his}` : hit.ramB ? `Шрам таранит! −${mine} прочности` : `Борт о борт: −${mine}`);
+    if (this.state === 'battle') this.ui.battleHud(p, b);
   }
 
   onShoreImpact(speed) {

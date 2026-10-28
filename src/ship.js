@@ -3,6 +3,7 @@ import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
 import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, HULL_PHYSICS } from './ship-physics.js';
+import { hullMass } from './ship-contact.js';
 import { sailDrive, offWind, windSpeedFactor, windHeel, leeway } from './wind.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
@@ -238,6 +239,9 @@ export class Vessel {
   }
 
   get pos() { return this.mesh.position; }
+  get length() { return this.mesh.userData.length; }
+  get width() { return this.mesh.userData.width; }
+  get mass() { return hullMass(this.length, this.width); }
   resetDynamics() {
     this.speed=this.yaw=this.drift=this.helm=this.heel=this.rudder=this.throttle=0;
     this.motion.reset();
