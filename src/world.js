@@ -20,6 +20,7 @@ import { DeckCamera, CrewOcclusion } from './deck-camera.js';
 import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
 import { Wind, tackFor } from './wind.js';
+import { driftFloater } from './floaters.js';
 import { collideHulls, ramDamage, applyImpulse, RAM, IMPACT } from './ship-contact.js';
 import { BOSS_REWARD, VICTORY_AT, advanceSinking, crossed, BOSS_LOOK, LOOK_UNTIL, easeBossLook } from './boss-finish.js';
 
@@ -674,8 +675,8 @@ export class World {
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const f = this.floaters[i];
       f.life -= dt;
+      driftFloater(f, dt, this.wind, [this.player]);
       f.yaw += f.spin * dt;
-      f.m.position.addScaledVector(f.drift, dt);
       f.m.position.y = waveHeight(f.m.position.x, f.m.position.z, t) - .05 - Math.max(0, 3 - f.life) * .4;
       f.m.rotation.y = f.yaw;
       if (f.life <= 0) { this.scene.remove(f.m); f.m.geometry.dispose(); this.floaters.splice(i, 1); }
