@@ -8,9 +8,9 @@ import {ISLANDS,BOSS_HOME} from '../src/islands.js';
 const D=Math.PI/180,wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const vessel=()=>{const mesh=new THREE.Group();mesh.userData={length:32,width:6.5,sails:[]};return new Vessel(mesh);};
 
-test('the polar: no-go floor upwind, fastest on a broad reach, tuned speed running, never a jump',()=>{
+test('the polar: no-go floor upwind, fastest running dead before it, never a jump',()=>{
  assert.equal(sailDrive(0),WIND.noGo);assert.equal(sailDrive(40*D),WIND.noGo);
- assert.equal(sailDrive(Math.PI),1);assert.ok(sailDrive(130*D)>sailDrive(90*D)&&sailDrive(90*D)>sailDrive(62*D));
+ assert.equal(sailDrive(Math.PI),1);assert.ok(sailDrive(Math.PI)>sailDrive(130*D)&&sailDrive(130*D)>sailDrive(90*D)&&sailDrive(90*D)>sailDrive(62*D));
  assert.equal(sailDrive(-90*D),sailDrive(90*D));assert.equal(sailDrive(NaN),WIND.noGo);
  let last=sailDrive(0);for(let d=.5;d<=180;d+=.5){const v=sailDrive(d*D);assert.ok(Math.abs(v-last)<.02,`${d}°`);last=v;}
 });
@@ -40,8 +40,10 @@ test('like Sea of Thieves the wind shifts to a new quarter every few minutes, sm
  }
  assert.equal(windAt(1,0,WIND.base).shifting,false,'no shift announced at the start');
 });
-test('wind speed factor: a light air slows her, a gale is no faster',()=>{
- assert.equal(windSpeedFactor(WIND.calm),1);assert.equal(windSpeedFactor(0),.6);assert.equal(windSpeedFactor(100),1);
+test('wind speed factor: the harder it blows the faster she goes, up to a gale',()=>{
+ assert.ok(Math.abs(windSpeedFactor(WIND.calm)-2/3)<1e-12);assert.equal(windSpeedFactor(WIND.storm),1);assert.equal(windSpeedFactor(100),1);
+ assert.equal(windSpeedFactor(0),.4);assert.equal(windSpeedFactor(NaN),.4);
+ let last=0;for(let v=0;v<=25;v+=.25){const f=windSpeedFactor(v);assert.ok(f>=last-1e-12);last=f;}
 });
 test('wind heel leans away from the wind, none running or with sails furled',()=>{
  const wind={toward:Math.PI/2,speed:WIND.storm};          // blows towards port of a ship heading 0
@@ -68,7 +70,7 @@ test('a ship in the wind: slower close-hauled than reaching, heels to leeward, s
  const run=(heading,fps=60)=>{const ship=vessel(),clock=new SimulationClock();ship.heading=heading;ship.wind={toward:0,speed:WIND.calm};ship.throttle=1;
   for(let i=0;i<fps*40;i++)clock.advance(1/fps,dt=>ship.update(dt,clock.time));return ship;};
  const close=run(Math.PI+20*D),reach=run(50*D),run180=run(0);
- assert.ok(close.speed<14*.4,`${close.speed}`);assert.ok(reach.speed>run180.speed&&run180.speed>13.5);
+ assert.ok(close.speed<14*.4,`${close.speed}`);assert.ok(run180.speed>reach.speed&&Math.abs(run180.speed-14*2/3)<.6,`${run180.speed}`);
  const beam=run(-Math.PI/2);assert.ok(beam.heel>.02,'wind from starboard leans her to port');
  const a=run(.7,30),b=run(.7,144);assert.ok(a.pos.distanceTo(b.pos)<1e-8);
  const none=vessel();none.throttle=1;for(let i=0;i<2400;i++)none.update(1/60,i/60);assert.ok(Math.abs(none.speed-14)<.05,'no wind: unchanged');

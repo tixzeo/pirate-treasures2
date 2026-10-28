@@ -2,8 +2,8 @@
 // on each point of sail and how far she heels. Angles use Vessel.heading's frame (0 means towards -Z);
 // the wind's angle is where it blows TO, so a ship with that heading runs dead before it.
 export const WIND = Object.freeze({
-  calm: 7,          // m/s, a fresh breeze: the sail speeds are tuned for it
-  storm: 18,        // m/s, a gale
+  calm: 7,          // m/s, a fresh breeze
+  storm: 18,        // m/s, a gale: running before it is her top speed
   gust: .15,        // share of the speed that comes and goes
   shift: 240,       // seconds between shifts: like Sea of Thieves, every few minutes the wind swings to a new quarter
   swingTime: 45,    // seconds a shift takes, so the sails have time to follow
@@ -53,9 +53,9 @@ export function windAt(t, storm = 0, base = 0) {
 export const offWind = (heading, toward) => Math.PI - Math.abs(wrap(heading - toward));
 
 // How hard square sails drive on each point of sail, as a share of the tuned speed.
-// A brig cannot point higher than about 60° off the wind; she is fastest on a broad reach.
-// Running dead before it is the tuned speed; a broad reach is the best she can do.
-const POLAR = [[0, WIND.noGo], [45, WIND.noGo], [62, .55], [90, .95], [130, 1.1], [180, 1]];
+// A brig cannot point higher than about 60° off the wind. As in Sea of Thieves (captain 28.10.2026)
+// she is fastest running dead before it, every sail drawing.
+const POLAR = [[0, WIND.noGo], [45, WIND.noGo], [62, .5], [90, .8], [130, .92], [180, 1]];
 export function sailDrive(off) {
   const deg = clamp(Number.isFinite(off) ? Math.abs(off) : 0, 0, Math.PI) / DEG;
   for (let i = 1; i < POLAR.length; i++) {
@@ -65,8 +65,13 @@ export function sailDrive(off) {
   return POLAR[POLAR.length - 1][1];
 }
 
-// A light air slows her; a fresh breeze or more is all the hull can use, so a gale is no faster.
-export const windSpeedFactor = speed => clamp(Math.sqrt(Math.max(0, speed) / WIND.calm), .6, 1);
+// The harder it blows, the faster she goes (captain 28.10.2026): running before a fresh breeze is two thirds
+// of her best (20 of 30 knots), the strongest fair-weather wind about 23, a gale all 30. A light air less.
+export function windSpeedFactor(speed) {
+  const v = Math.max(0, Number.isFinite(speed) ? speed : 0), fresh = 2 / 3;
+  if (v < WIND.calm) return Math.max(.4, fresh * Math.sqrt(v / WIND.calm));
+  return fresh + (1 - fresh) * clamp((v - WIND.calm) / (WIND.storm - WIND.calm), 0, 1);
+}
 
 // Heel from the wind pressing on the sails, in radians: positive leans to port (wind on the starboard side).
 // Nothing when running before the wind or with the sails furled; strongest on a beam reach in a gale.

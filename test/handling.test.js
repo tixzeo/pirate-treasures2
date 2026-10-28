@@ -8,12 +8,18 @@ import {SimulationClock} from '../src/simulation-clock.js';
 const brig=()=>{const mesh=new THREE.Group();mesh.userData={length:32,width:6.5,sails:[]};return new Vessel(mesh,PLAYER_SHIP.handling);};
 const knots=ms=>ms*1.94;
 
-test('captain 28.10.2026: about 20 knots at most, whatever the wind (a little more running down a sea)',()=>{
- let best=0;
- for(const speed of [WIND.calm,12,WIND.storm*1.3])for(let h=0;h<Math.PI*2;h+=.2){
-  const s=brig();s.wind={toward:0,speed};s.heading=h;s.throttle=1;for(let i=0;i<60*60;i++)s.update(1/60,i/60);best=Math.max(best,knots(s.speed));
- }
- assert.ok(best<=20.3&&best>19,`${best.toFixed(2)} knots`);
+test('captain 28.10.2026: running is fastest and wind is speed: ~20 knots fresh, ~23 at most in fair weather, ~30 in a gale',()=>{
+ const top=(speed,heading)=>{const s=brig();s.wind={toward:0,speed};s.heading=heading;s.throttle=1;s.waterHeight=()=>0;
+  for(let i=0;i<60*60;i++)s.update(1/60,i/60);return knots(s.speed);};
+ const fresh=top(WIND.calm,0),fair=top(WIND.calm*(1+WIND.strength)*(1+WIND.gust),0),gale=top(WIND.storm,0);
+ const reach=top(WIND.calm,50*Math.PI/180),beam=top(WIND.calm,Math.PI/2),light=top(4,0);
+ assert.ok(gale>fair&&fair>fresh&&fresh>light,`${light.toFixed(1)} < ${fresh.toFixed(1)} < ${fair.toFixed(1)} < ${gale.toFixed(1)}`);
+ assert.ok(fresh>reach&&reach>beam,'running beats a reach beats a beam reach');
+ assert.ok(Math.abs(fresh-20)<.5,`fresh ${fresh.toFixed(2)}`);assert.ok(fair>22&&fair<23.5,`fair ${fair.toFixed(2)}`);
+ assert.ok(gale<=30&&gale>29,`gale ${gale.toFixed(2)}`);assert.ok(top(WIND.storm*1.4,0)<=30);
+ let best=0;for(let h=0;h<Math.PI*2;h+=.3){const s=brig();s.wind={toward:0,speed:WIND.storm};s.heading=h;s.throttle=1;
+  for(let i=0;i<60*60;i++)s.update(1/60,i/60);best=Math.max(best,knots(s.speed));}
+ assert.ok(best<=31,`with waves ${best.toFixed(2)}`);
 });
 test('she gathers way slowly: sails take ten seconds to set, full speed takes most of twenty',()=>{
  const s=brig();s.throttle=1;let t90=null,t50=null;
