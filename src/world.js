@@ -82,7 +82,7 @@ export class World {
     this.scene.add(this.marker);
 
     // Boss: «Каракатица», captain Scar's schooner from island 12.
-    this.boss = new Vessel(buildShip({ hull: 'weathered_hull', hullTint: '#8a7f99', trim: 'worn_iron', sail: 'black_sailcloth', sailTint: '#9a8fb0', flag: 'crimson_sailcloth', masts: 2, length: 15 }), { hp: 150, maxSpeed: 9, turnRate: .55 });
+    this.boss = new Vessel(buildShip({ hull: 'weathered_hull', hullTint: '#8a7f99', trim: 'worn_iron', sail: 'black_sailcloth', sailTint: '#9a8fb0', flag: 'crimson_sailcloth', masts: 2, length: 15 }), { hp: 150, maxSpeed: 6.5, turnRate: .4 });
     this.bossHome = new THREE.Vector3(BOSS_HOME.x, 0, BOSS_HOME.z);
     this.boss.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     this.boss.throttle = .5;

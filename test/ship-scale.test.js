@@ -82,7 +82,7 @@ test('invalid hulls, decks and dimensions fail instead of producing NaN', () => 
 test('camera and hit height follow length while handling and mooring stay fixed', () => {
   close(metrics.camera.back, 26 * 22 / 14);
   close(metrics.hit.maxY, 4 * 22 / 14);
-  assert.equal(BRIGANTINE.handling.maxSpeed, 14);
+  assert.equal(BRIGANTINE.handling.maxSpeed, 9.1);   // captain 28.10.2026: 20 knots at best with the wind
   assert.equal(BRIGANTINE.handling.hp, 100);
   assert.equal(SHIP_RULES.moor.dist, 3);
   close(SHIP_RULES.moor.ang, Math.PI / 15);

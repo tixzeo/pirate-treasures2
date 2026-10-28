@@ -2,9 +2,10 @@
 // terminal speeds remain the existing class/SAILS values, independent of size.
 export const HULL_PHYSICS = Object.freeze({
   dragLinear:.20, dragQuadratic:.003, stopSpeed:.015, maxStep:1/120,
-  helmRate:1.8, yawTime:.9, minTurnLength:.85, heelTime:.8, heelLimit:.1,
+  helmRate:.7, yawTime:1.8, minTurnLength:.85, heelTime:2.5, heelLimit:.1,
   pitchLimit:.1, rollLimit:.16, draft:.3, floodDrag:.8,
   skid:.12, driftTime:1.1, slope:.7, spray:.05,
+  sailUp:.1, sailDown:.25,
 });
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const waterDrag = speed => HULL_PHYSICS.dragLinear*speed + HULL_PHYSICS.dragQuadratic*speed*Math.abs(speed);
@@ -52,4 +53,12 @@ export function advanceDrift(drift,speed,yaw,leeway,length,dt) {
 export function slopeSurge(speed,pitch,dt) {
   if(![speed,pitch,dt].every(Number.isFinite)||dt<0)return Number.isFinite(speed)?speed:0;
   return speed-9.81*Math.sin(pitch)*HULL_PHYSICS.slope*clamp(Math.abs(speed)/3,0,1)*dt;
+}
+
+// The sails the crew has actually set, following the order: setting them takes about ten seconds,
+// taking them in about four, so a ship gathers way slowly and a heavy hull keeps it.
+export function advanceSails(sail,order,dt) {
+  if(![sail,order,dt].every(Number.isFinite)||dt<0)return Number.isFinite(sail)?sail:0;
+  const goal=clamp(order,-.25,1),rate=goal>sail?HULL_PHYSICS.sailUp:HULL_PHYSICS.sailDown;
+  return sail+clamp(goal-sail,-rate*dt,rate*dt);
 }

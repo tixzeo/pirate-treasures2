@@ -3,7 +3,7 @@ export const BRIGANTINE = Object.freeze({
   length: 22,
   deckWidth: 4.4,
   referenceLength: 14,
-  handling: Object.freeze({ hp: 100, maxSpeed: 14, turnRate: .9 }),
+  handling: Object.freeze({ hp: 100, maxSpeed: 9.1, turnRate: .25 }),   // 9.1 m/s × 1.1 on a broad reach ≈ 19.5 knots, 20 running down a sea
 });
 
 // Native 32m V6 brig with authored UV textures. Only this class is replaced.

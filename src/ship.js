@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
-import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, slopeSurge, HULL_PHYSICS } from './ship-physics.js';
+import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, slopeSurge, advanceSails, HULL_PHYSICS } from './ship-physics.js';
 import { hullMass, contactTurn } from './ship-contact.js';
 import { sailDrive, offWind, windSpeedFactor, windHeel, leeway } from './wind.js';
 import { pbr } from './materials.js';
@@ -224,7 +224,8 @@ export class Vessel {
     this.mesh = mesh;
     this.heading = 0;   // radians, 0 means bow to -Z
     this.speed = 0;
-    this.throttle = 0;  // -0.25..1, the sail setting
+    this.throttle = 0;  // -0.25..1, the sail setting ordered
+    this.sail = 0;      // -0.25..1, the sail actually set: follows the order over a few seconds
     this.rudder = 0;    // -1..1, where the helmsman wants the wheel
     this.helm = 0;      // -1..1, where the wheel actually is
     this.yaw = 0;       // current rate of turn, rad/s
@@ -244,7 +245,7 @@ export class Vessel {
   get width() { return this.mesh.userData.width; }
   get mass() { return hullMass(this.length, this.width); }
   resetDynamics() {
-    this.speed=this.yaw=this.drift=this.helm=this.heel=this.rudder=this.throttle=this.slope=0;
+    this.speed=this.yaw=this.drift=this.helm=this.heel=this.rudder=this.throttle=this.sail=this.slope=0;
     this.motion.reset();
   }
   resolveContact(push,retention=.5) {
@@ -275,10 +276,11 @@ export class Vessel {
   update(dt, t) {
     const flooded=this.hp<=0||this.sinking>0;
     // The wind (world.js hands every ship the same one) sets how much the sails are worth on this course.
-    const w=this.wind, sails=Math.max(0,this.throttle);
+    this.sail=advanceSails(this.sail,flooded?0:this.throttle,dt);
+    const w=this.wind, sails=Math.max(0,this.sail);
     this.drive=w?sailDrive(offWind(this.heading,w.toward))*windSpeedFactor(w.speed):1;
-    const top=this.throttle>0?this.maxSpeed*this.drive:this.maxSpeed;
-    this.speed = advanceSurge(this.speed,flooded?0:this.throttle,top,dt,1+3*this.sinking);
+    const top=this.sail>0?this.maxSpeed*this.drive:this.maxSpeed;
+    this.speed = advanceSurge(this.speed,flooded?0:this.sail,top,dt,1+3*this.sinking);
     if(flooded)this.speed*=Math.exp(-HULL_PHYSICS.floodDrag*Math.max(0,dt));
     else this.speed=slopeSurge(this.speed,this.slope,dt);
     const steering=advanceSteering(this,flooded?0:this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
@@ -299,9 +301,9 @@ export class Vessel {
     this.pos.y = motion.heave * calm - settle - plunge;
     this.mesh.rotation.set(motion.pitch * calm + lift, this.heading, motion.roll * calm + list, 'YXZ');
 
-    for (const s of this.mesh.userData.sails) s.scale.z = .8 + .2 * Math.abs(this.throttle) + .05 * Math.sin(t * 3 + s.id);
+    for (const s of this.mesh.userData.sails) s.scale.z = .8 + .2 * Math.abs(this.sail) + .05 * Math.sin(t * 3 + s.id);
     // Model sails breathe and flags flutter, harder with more sail set.
-    const set = .5 + Math.abs(this.throttle) * .5;
+    const set = .5 + Math.abs(this.sail) * .5;
     for (const o of this.mesh.userData.sway || []) {
       const r = o.userData.rest, ph = t * (o.userData.flag ? 2.4 : 1.2) + o.userData.phase;
       o.rotation.y = r.y + Math.sin(ph) * (o.userData.flag ? .13 : .055 * set);
