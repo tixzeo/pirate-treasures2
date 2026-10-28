@@ -5,11 +5,16 @@ import {HullMotion} from '../src/hull-motion.js';
 import {contactTurn,RAM,IMPACT} from '../src/ship-contact.js';
 const vessel=()=>{const mesh=new THREE.Group();mesh.userData={length:32,width:6.5,sails:[]};return new Vessel(mesh);};
 
-test('a kick sets the hull rocking and the damping takes it out again',()=>{
+test('a broadside sways the hull slowly, a degree or two, and the sway dies away',()=>{
  const m=new HullMotion(),flat={heave:0,pitch:0,roll:0,heel:0};m.update(0,flat,32);
- m.kick(0,6*IMPACT.gunRoll);let peak=0;for(let i=0;i<600;i++){m.update(1/60,flat,32);peak=Math.max(peak,m.roll);}
- assert.ok(peak>.02,`a broadside rolls her about ${(peak*57.3).toFixed(1)}°`);assert.ok(Math.abs(m.roll)<1e-3&&Math.abs(m.rollVelocity)<1e-3);
- m.kick(NaN,NaN);assert.ok(Number.isFinite(m.rollVelocity)&&Number.isFinite(m.pitchVelocity));
+ let peak=0,peakAt=0,rate=0,last=0;
+ for(let i=0;i<60*25;i++){if(i<4*7&&i%7===0)m.kick(0,IMPACT.gunRoll);m.update(1/60,flat,32);
+  if(m.roll>peak){peak=m.roll;peakAt=i/60;}rate=Math.max(rate,Math.abs(m.roll-last)*60);last=m.roll;}
+ const deg=peak*180/Math.PI;assert.ok(deg>.8&&deg<3,`${deg.toFixed(2)}°`);
+ assert.ok(peakAt>.8,`peaks after ${peakAt}s, not at once`);assert.ok(rate*180/Math.PI<3,`at most ${(rate*180/Math.PI).toFixed(2)}°/s`);
+ assert.ok(Math.abs(m.roll)<.002&&Math.abs(m.sway.rollVelocity)<.002);
+ m.kick(NaN,NaN);assert.ok(Number.isFinite(m.sway.rollVelocity)&&Number.isFinite(m.sway.pitchVelocity));
+ m.reset();assert.equal(m.sway.roll,0);
 });
 test('running into the shore at an angle turns her along it; square on or alongside does not',()=>{
  const glance=vessel();glance.speed=10;glance.resolveContact({x:.5,z:.5},.5);assert.ok(glance.yaw<-.05,'pushed to starboard at the bow: bow swings right');

@@ -699,7 +699,7 @@ export class World {
     this.rammedAt = this.time;
     const p = this.player, b = this.boss, loss = ramDamage(hit);
     // Both hulls rock from the blow, each away from where she was struck.
-    const rock = Math.min(.3, hit.closing * .02);
+    const rock = Math.min(IMPACT.ramRollMax, hit.closing * IMPACT.ramRoll);
     p.motion.kick(0, -(hit.nx * p.side('right').x + hit.nz * p.side('right').z) * rock);
     b.motion.kick(0, (hit.nx * b.side('right').x + hit.nz * b.side('right').z) * rock);
     const mine = this.immortal ? 0 : Math.round(loss.a), his = Math.round(loss.b);

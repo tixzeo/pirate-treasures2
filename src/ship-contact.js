@@ -2,7 +2,7 @@
 // Bodies are Vessels or plain objects with pos {x, z}, heading, length, width, mass, speed, drift and yaw.
 export const RAM = Object.freeze({
   restitution: .2,   // how much of the closing speed bounces back
-  maxYaw: .8,        // most rate of turn one blow can give, rad/s
+  maxYaw: .2,        // most rate of turn one blow can give, rad/s: a heavy hull swings, it does not spin
   bow: .5,           // share of the half length from the middle that counts as the bow
   threshold: 1.5,    // m/s of closing speed a hull takes without damage
   damage: 2.2,       // hit points per m/s above that
@@ -12,10 +12,12 @@ export const RAM = Object.freeze({
 
 // Smaller blows: the guns' recoil and a ball striking home, per gun or per ball.
 export const IMPACT = Object.freeze({
-  gunRoll: .1,       // rad/s of roll each gun's recoil gives, away from the side that fired
-  gunDrift: .05,     // m/s each gun pushes the hull away from that side
-  ballPush: .35,     // m/s a ball's blow gives the whole hull along its flight
-  ballRoll: .08,     // rad/s of roll it gives, away from the side it struck
+  gunRoll: .012,     // rad/s of sway each gun's recoil starts, away from the side that fired
+  gunDrift: .03,     // m/s each gun pushes the hull away from that side
+  ballPush: .2,      // m/s a ball's blow gives the whole hull along its flight
+  ramRoll: .007,     // rad/s of sway per m/s of closing speed when hulls meet
+  ramRollMax: .12,
+  ballRoll: .03,     // rad/s of sway it starts, away from the side it struck
 });
 
 const fwd = h => ({ x: -Math.sin(h), z: -Math.cos(h) });
