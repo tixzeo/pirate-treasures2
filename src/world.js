@@ -287,7 +287,7 @@ export class World {
       const dist = Math.hypot(p.pos.x - b.berth.x, p.pos.z - b.berth.z);
       if (dist > 60 || (best && dist > best.dist)) continue;
       const ang = Math.min(wrapAbs(p.heading - b.heading), wrapAbs(p.heading - b.heading - Math.PI));
-      best = { isle: isl, dist, ang, speed: Math.abs(p.speed) };
+      best = { isle: isl, dist, ang, speed: Math.hypot(p.speed, p.drift) };
     }
     if (best) {
       best.ok = { dist: best.dist < MOOR.dist, ang: best.ang < MOOR.ang, speed: best.speed < MOOR.speed };
@@ -344,7 +344,7 @@ export class World {
       const to = target.pos.clone().sub(ship.pos); to.y = 0;
       const ang = dir.angleTo(to.clone().normalize());
       // Lead a moving target by where it will be when the ball lands.
-      const lead = target.forward().multiplyScalar(target.speed * to.length() / BALL_SPEED_H);
+      const lead = target.velocity().multiplyScalar(to.length() / BALL_SPEED_H);
       if (ang < .6) range = THREE.MathUtils.clamp(to.add(lead).length(), 15, 110);
     }
     // The guns go off one after another; update() fires them when their time comes.
@@ -361,7 +361,7 @@ export class World {
     const r = range * (1 + (Math.random() - .5) * spread * 2);
     const t = r / BALL_SPEED_H;
     const d = ship.side(side).applyAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - .5) * spread);
-    const vel = d.multiplyScalar(BALL_SPEED_H).add(ship.forward().multiplyScalar(ship.speed));
+    const vel = d.multiplyScalar(BALL_SPEED_H).add(ship.velocity());
     vel.y = .5 * G * t - (from.y - .5) / t;
     this.fx.shoot(from, vel, ship);
     this.fx.puff('smoke', from.clone().addScaledVector(ship.side(side), 1.5), { size: .9, vel: ship.side(side).multiplyScalar(3).setY(1) });

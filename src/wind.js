@@ -9,6 +9,7 @@ export const WIND = Object.freeze({
   period: 300,      // seconds for one slow swing
   noGo: .3,         // drive left when pointing into the wind: sails aback, she only creeps
   heel: 3.2,        // heel per unit of side pressure, before the hull's limit
+  leeway: .05,      // sideways slip per m/s of wind across the hull with all sails set
   base: -.45,       // where the wind blows on average: from astern on the voyage out (islands.js)
   tack: 60 * Math.PI / 180,  // closest a captain steers to the wind
 });
@@ -55,6 +56,12 @@ export function windHeel(heading, wind, sails) {
   const pressure = (wind.speed / WIND.storm) ** 2;
   return WIND.heel * clamp(sails, 0, 1) * pressure * across * .1;
 }
+
+// Where the wind pushes a hull sideways, in m/s towards starboard (positive) or port, before the keel resists.
+export function leeway(heading, wind, sails) {
+  return -Math.sin(wrap(wind.toward - heading)) * wind.speed * WIND.leeway * clamp(sails, 0, 1);
+}
+
 
 // The heading to steer for a goal the wind may not allow: inside the no-go zone, the nearer tack.
 export function tackFor(goal, toward) {

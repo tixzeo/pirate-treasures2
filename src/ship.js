@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
-import { advanceSurge, advanceSteering, advanceHeel, HULL_PHYSICS } from './ship-physics.js';
-import { sailDrive, offWind, windSpeedFactor, windHeel } from './wind.js';
+import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, HULL_PHYSICS } from './ship-physics.js';
+import { sailDrive, offWind, windSpeedFactor, windHeel, leeway } from './wind.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -227,6 +227,7 @@ export class Vessel {
     this.rudder = 0;    // -1..1, where the helmsman wants the wheel
     this.helm = 0;      // -1..1, where the wheel actually is
     this.yaw = 0;       // current rate of turn, rad/s
+    this.drift = 0;     // sideways slip, m/s towards starboard
     this.maxSpeed = maxSpeed;
     this.turnRate = turnRate;
     this.hp = this.maxHp = hp;
@@ -238,21 +239,26 @@ export class Vessel {
 
   get pos() { return this.mesh.position; }
   resetDynamics() {
-    this.speed=this.yaw=this.helm=this.heel=this.rudder=this.throttle=0;
+    this.speed=this.yaw=this.drift=this.helm=this.heel=this.rudder=this.throttle=0;
     this.motion.reset();
   }
   resolveContact(push,retention=.5) {
     if(!push||![push.x,push.z].every(Number.isFinite))return 0;
     const depth=Math.hypot(push.x,push.z);if(depth===0)return 0;
     this.pos.x+=push.x;this.pos.z+=push.z;
-    const f=this.forward(),cosine=(f.x*push.x+f.z*push.z)/depth;
-    const impact=Math.max(0,-this.speed*cosine);
+    const f=this.forward(),r=this.side('right'),cosine=(f.x*push.x+f.z*push.z)/depth,across=(r.x*push.x+r.z*push.z)/depth;
+    // Impact: the speed of the hull, forward and sideways, into the obstacle.
+    const impact=Math.max(0,-(this.speed*cosine+this.drift*across));
     if(impact>0){
-      const loss=(1-THREE.MathUtils.clamp(retention,0,1))*cosine*cosine;
+      const keep=THREE.MathUtils.clamp(retention,0,1);
+      const loss=(1-keep)*cosine*cosine;
       this.speed*=1-loss;this.yaw*=1-loss;
+      if(this.drift*across<0)this.drift*=1-(1-keep)*across*across;
     }
     return impact;
   }
+  // Where the hull is actually going, m/s: forward speed plus the sideways slip.
+  velocity() { return this.forward().multiplyScalar(this.speed).addScaledVector(this.side('right'), this.drift); }
   forward() { return new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading)); }
   // Unit vector out of the left (port) or right (starboard) side.
   side(which) {
@@ -270,7 +276,8 @@ export class Vessel {
     if(flooded)this.speed*=Math.exp(-HULL_PHYSICS.floodDrag*Math.max(0,dt));
     const steering=advanceSteering(this,flooded?0:this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
     this.helm=steering.helm;this.yaw=steering.yaw;this.heading+=steering.angle;
-    this.pos.addScaledVector(this.forward(), this.speed * dt);
+    this.drift=advanceDrift(this.drift,this.speed,this.yaw,w&&!flooded?leeway(this.heading,w,sails):0,this.mesh.userData.length,dt);
+    this.pos.addScaledVector(this.forward(), this.speed * dt).addScaledVector(this.side('right'), this.drift * dt);
     this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt,w&&!flooded?windHeel(this.heading,w,sails)*Math.min(1,this.drive*1.2):0);
 
     const water = sampleHullWater(this.waterHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,

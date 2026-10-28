@@ -4,6 +4,7 @@ export const HULL_PHYSICS = Object.freeze({
   dragLinear:.20, dragQuadratic:.003, stopSpeed:.015, maxStep:1/120,
   helmRate:1.8, yawTime:.9, minTurnLength:.85, heelTime:.8, heelLimit:.1,
   pitchLimit:.1, rollLimit:.16, draft:.3, floodDrag:.8,
+  skid:.12, driftTime:1.1,
 });
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const waterDrag = speed => HULL_PHYSICS.dragLinear*speed + HULL_PHYSICS.dragQuadratic*speed*Math.abs(speed);
@@ -36,4 +37,12 @@ export function advanceSteering({helm,yaw},rudder,speed,maxSpeed,turnRate,length
 export function advanceHeel(heel,speed,yaw,dt,windHeel=0) {
   const target=clamp(-Math.atan(speed*yaw/9.81)*.38+(Number.isFinite(windHeel)?windHeel:0),-HULL_PHYSICS.heelLimit,HULL_PHYSICS.heelLimit);
   return target+(heel-target)*Math.exp(-Math.max(0,dt)/HULL_PHYSICS.heelTime);
+}
+
+// Sideways speed, m/s towards starboard: the keel lets the hull slip outward in a turn and to leeward
+// in the wind (wind.js leeway), and takes any slip back out with lateral resistance.
+export function advanceDrift(drift,speed,yaw,leeway,length,dt) {
+  if(![drift,speed,yaw,dt].every(Number.isFinite)||dt<0)return Number.isFinite(drift)?drift:0;
+  const target=speed*yaw*HULL_PHYSICS.skid+(Number.isFinite(leeway)?leeway:0);
+  return target+(drift-target)*Math.exp(-dt/(HULL_PHYSICS.driftTime*Math.sqrt(Math.max(8,length)/32)));
 }
