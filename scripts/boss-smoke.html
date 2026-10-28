@@ -2,10 +2,13 @@
 const frame=document.querySelector('iframe'),out=document.querySelector('pre'),results=[];
 const ok=(name,pass,detail)=>{results.push({name,pass:!!pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
 const KEY='pirates2-save',stored=()=>JSON.parse(localStorage.getItem(KEY)||'null');
+// Writes and clears a save: never on the captain's origin, and whatever was stored here comes back afterwards.
+const guarded=location.port==='5174',before=guarded?null:localStorage.getItem(KEY);
 const until=async(test,ms=600000)=>{const end=performance.now()+ms;while(!test()){if(performance.now()>end)throw Error('Fixture wait timed out');await new Promise(r=>setTimeout(r,30))}};
 // This origin's own save only: the fixture starts and ends with it empty.
 const boot=async()=>{const w=frame.contentWindow;await until(()=>w.game&&w.game.world);const g=w.game;await g.world.kitDone;await until(()=>g.world.crew.captain&&g.world.crew.tim);return {w,g};};
 try{
+if(guarded)throw Error('Use a separate test port, never captain origin 5174');
 localStorage.removeItem(KEY);frame.src='/?q=low';await new Promise(r=>frame.addEventListener('load',r,{once:true}));
 let {w,g}=await boot();const {world,input}=g,doc=w.document,gold=()=>+doc.getElementById('gold').textContent;
 doc.getElementById('go').click();world.renderer.setAnimationLoop(null);world.resetProgress();world.immortal=true;input.throttle=0;
@@ -40,7 +43,8 @@ world2.renderer.setAnimationLoop(null);for(let i=0;i<60;i++)world2.update(dt,{th
 ok('reload keeps the gold',+doc2.getElementById('gold').textContent===500&&stored().gold===500,{gold:doc2.getElementById('gold').textContent});
 ok('reload keeps Scar beaten and gone',world2.bossBeaten&&world2.bossGone&&!world2.boss.mesh.parent&&world2.state==='sail',{beaten:world2.bossBeaten,gone:world2.bossGone,state:world2.state});
 ok('reload keeps Tim aboard and no replayed story',world2.crew.tim.visible&&!world2.ui.open,{tim:world2.crew.tim.visible,open:world2.ui.open});
+ok('after reload the helm camera does not look at the gone boss',world2.bossLook<1e-3,{bossLook:world2.bossLook});
 out.textContent=`PASS ${results.length} boss finish checks · dialog ${dialogAt.toFixed(2)} s · max turn ${maxTurn.toFixed(3)}°\n`+JSON.stringify({results},null,1);
 }catch(e){out.textContent='FAIL '+e.message+'\n'+JSON.stringify({results},null,1)}
-finally{localStorage.removeItem(KEY)}
+finally{if(!guarded){if(before===null)localStorage.removeItem(KEY);else localStorage.setItem(KEY,before)}}
 </script></body></html>
