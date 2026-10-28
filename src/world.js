@@ -20,7 +20,7 @@ import { DeckCamera, CrewOcclusion } from './deck-camera.js';
 import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
 import { Wind, tackFor } from './wind.js';
-import { collideHulls, ramDamage, RAM } from './ship-contact.js';
+import { collideHulls, ramDamage, applyImpulse, RAM, IMPACT } from './ship-contact.js';
 import { BOSS_REWARD, VICTORY_AT, advanceSinking, crossed, BOSS_LOOK, LOOK_UNTIL, easeBossLook } from './boss-finish.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
@@ -366,6 +366,10 @@ export class World {
     const vel = d.multiplyScalar(BALL_SPEED_H).add(ship.velocity());
     vel.y = .5 * G * t - (from.y - .5) / t;
     this.fx.shoot(from, vel, ship);
+    // Recoil: each gun rolls her away from the side that fired and nudges her that way.
+    const away = side === 'right' ? 1 : -1;
+    ship.motion.kick(0, away * IMPACT.gunRoll);
+    ship.drift -= away * IMPACT.gunDrift;
     this.fx.puff('smoke', from.clone().addScaledVector(ship.side(side), 1.5), { size: .9, vel: ship.side(side).multiplyScalar(3).setY(1) });
     this.fx.puff('fire', from, { size: .5 });
   }
@@ -392,6 +396,14 @@ export class World {
       const dmg = ship === this.boss ? 6 : this.immortal ? 0 : 5;
       ship.hp = Math.max(0, ship.hp - dmg);
       if (ship === this.player && dmg > 0) this.lastDamage = 'cannon';
+      // The blow shoves the hull along the ball's flight, turns her by where it struck and rolls her away from it.
+      const fly = ball.vel ? ball.vel.clone().setY(0) : new THREE.Vector3();
+      if (fly.lengthSq() > 1e-6) {
+        fly.normalize();
+        const at = ball.m.position.clone().sub(ship.pos);
+        applyImpulse(ship, at, fly.x * ship.mass * IMPACT.ballPush, fly.z * ship.mass * IMPACT.ballPush);
+        ship.motion.kick(0, -fly.dot(ship.side('right')) * IMPACT.ballRoll);
+      }
       this.fx.burst('fire', ball.m.position, 4, .6, 3);
       this.fx.burst('debris', ball.m.position, 5, 1, 5);
       this.fx.puff('smoke', ball.m.position, { size: 1.6 });
@@ -683,6 +695,10 @@ export class World {
   onRam(hit) {
     this.rammedAt = this.time;
     const p = this.player, b = this.boss, loss = ramDamage(hit);
+    // Both hulls rock from the blow, each away from where she was struck.
+    const rock = Math.min(.3, hit.closing * .02);
+    p.motion.kick(0, -(hit.nx * p.side('right').x + hit.nz * p.side('right').z) * rock);
+    b.motion.kick(0, (hit.nx * b.side('right').x + hit.nz * b.side('right').z) * rock);
     const mine = this.immortal ? 0 : Math.round(loss.a), his = Math.round(loss.b);
     p.hp = Math.max(0, p.hp - mine);
     b.hp = Math.max(0, b.hp - his);

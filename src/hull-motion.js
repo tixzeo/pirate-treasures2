@@ -9,6 +9,8 @@ export function dampedAxis(value,velocity,target,omega,dt) {
 export class HullMotion {
   constructor() { this.reset(); }
   reset() { this.ready=false;this.pitchVelocity=0;this.rollVelocity=0; }
+  // A blow to the hull (recoil, a ball, a collision) sets her rocking; the damping takes it out again.
+  kick(pitch=0,roll=0) { if(Number.isFinite(pitch))this.pitchVelocity+=pitch;if(Number.isFinite(roll))this.rollVelocity+=roll; }
   update(dt, { heave, pitch, roll, heel }, length) {
     const weight = Math.sqrt(Math.max(8, length) / 32);
     const target = { heave, pitch: Math.max(-HULL_PHYSICS.pitchLimit, Math.min(HULL_PHYSICS.pitchLimit, pitch)),

@@ -10,6 +10,14 @@ export const RAM = Object.freeze({
   cooldown: .7,      // seconds before the same pair can take damage again
 });
 
+// Smaller blows: the guns' recoil and a ball striking home, per gun or per ball.
+export const IMPACT = Object.freeze({
+  gunRoll: .1,       // rad/s of roll each gun's recoil gives, away from the side that fired
+  gunDrift: .05,     // m/s each gun pushes the hull away from that side
+  ballPush: .35,     // m/s a ball's blow gives the whole hull along its flight
+  ballRoll: .08,     // rad/s of roll it gives, away from the side it struck
+});
+
 const fwd = h => ({ x: -Math.sin(h), z: -Math.cos(h) });
 const right = h => ({ x: Math.cos(h), z: -Math.sin(h) });
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -109,4 +117,17 @@ export function ramDamage({ closing, ramA, ramB }) {
   if (ramA && !ramB) return { a: full * RAM.rammer, b: full };
   if (ramB && !ramA) return { a: full, b: full * RAM.rammer };
   return { a: full * .6, b: full * .6 };
+}
+
+// A hull run against something fixed (shore, pier) at an angle turns along it: the blow lands on the end that
+// leads into it. push: how far the contact moved her; impact: her speed into it; keep: the share of speed kept.
+export function contactTurn(body, push, impact, keep) {
+  const depth = Math.hypot(push.x, push.z);
+  if (!(depth > 0) || !(impact > 0)) return 0;
+  // Bow first, stern first, or alongside (no lever at all): the more end-on, the further out the blow lands.
+  const f = fwd(body.heading), n = { x: push.x / depth, z: push.z / depth }, lead = clamp(-2 * (f.x * n.x + f.z * n.z), -1, 1);
+  const rel = { x: f.x * body.length * .4 * lead, z: f.z * body.length * .4 * lead };
+  const turn = clamp(cross(rel, n) * impact * (1 - keep) * 12 / (body.length * body.length), -RAM.maxYaw, RAM.maxYaw);
+  body.yaw += turn;
+  return turn;
 }

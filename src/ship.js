@@ -3,7 +3,7 @@ import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
 import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, slopeSurge, HULL_PHYSICS } from './ship-physics.js';
-import { hullMass } from './ship-contact.js';
+import { hullMass, contactTurn } from './ship-contact.js';
 import { sailDrive, offWind, windSpeedFactor, windHeel, leeway } from './wind.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
@@ -259,6 +259,7 @@ export class Vessel {
       const loss=(1-keep)*cosine*cosine;
       this.speed*=1-loss;this.yaw*=1-loss;
       if(this.drift*across<0)this.drift*=1-(1-keep)*across*across;
+      contactTurn(this,push,impact,keep);
     }
     return impact;
   }
