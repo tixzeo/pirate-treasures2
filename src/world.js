@@ -12,12 +12,16 @@ import { Post, pickQuality } from './post.js';
 import { character } from './characters.js';
 import { sfx } from './sound.js';
 import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
+import { HULL_PHYSICS } from './ship-physics.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
 import { DeckWalker, makeDeckZone } from './deck-walk.js';
 import { DeckCamera, CrewOcclusion } from './deck-camera.js';
 import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
+import { Wind, tackFor } from './wind.js';
+import { driftFloater } from './floaters.js';
+import { collideHulls, ramDamage, applyImpulse, RAM, IMPACT } from './ship-contact.js';
 import { BOSS_REWARD, VICTORY_AT, advanceSinking, crossed, BOSS_LOOK, LOOK_UNTIL, easeBossLook } from './boss-finish.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
@@ -78,7 +82,7 @@ export class World {
     this.scene.add(this.marker);
 
     // Boss: «Каракатица», captain Scar's schooner from island 12.
-    this.boss = new Vessel(buildShip({ hull: 'weathered_hull', hullTint: '#8a7f99', trim: 'worn_iron', sail: 'black_sailcloth', sailTint: '#9a8fb0', flag: 'crimson_sailcloth', masts: 2, length: 15 }), { hp: 150, maxSpeed: 9, turnRate: .55 });
+    this.boss = new Vessel(buildShip({ hull: 'weathered_hull', hullTint: '#8a7f99', trim: 'worn_iron', sail: 'black_sailcloth', sailTint: '#9a8fb0', flag: 'crimson_sailcloth', masts: 2, length: 15 }), { hp: 150, maxSpeed: 10.8, turnRate: .4 });
     this.bossHome = new THREE.Vector3(BOSS_HOME.x, 0, BOSS_HOME.z);
     this.boss.pos.copy(this.bossHome).add(new THREE.Vector3(40, 0, 0));
     this.boss.throttle = .5;
@@ -98,6 +102,9 @@ export class World {
       return l;
     });
     this.life = new SeaLife(this);
+    // One wind for the whole sea: both ships sail by it.
+    this.wind = new Wind();
+    this.player.wind = this.boss.wind = this.wind;
     this.kitDone = kitReady.then(() => this.applyKit()).catch(e => console.warn('World kit not applied', e));
     this.loadCrew();
 
@@ -244,6 +251,8 @@ export class World {
       this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
       this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
       this.crew.captain.rotation.y = walker.facing;
+      // Place the view now: a fast display may draw this frame before the next physics step.
+      this.deckCamera.update(0, this.camera, this.player.mesh, walker, navigation);
     } else if (mode === 'helm') {
       this.deckView = this.deckCamera?.view();
       this.crewOcclusion?.restore(); this.crewOcclusion = null;
@@ -283,7 +292,7 @@ export class World {
       const dist = Math.hypot(p.pos.x - b.berth.x, p.pos.z - b.berth.z);
       if (dist > 60 || (best && dist > best.dist)) continue;
       const ang = Math.min(wrapAbs(p.heading - b.heading), wrapAbs(p.heading - b.heading - Math.PI));
-      best = { isle: isl, dist, ang, speed: Math.abs(p.speed) };
+      best = { isle: isl, dist, ang, speed: Math.hypot(p.speed, p.drift) };
     }
     if (best) {
       best.ok = { dist: best.dist < MOOR.dist, ang: best.ang < MOOR.ang, speed: best.speed < MOOR.speed };
@@ -340,7 +349,7 @@ export class World {
       const to = target.pos.clone().sub(ship.pos); to.y = 0;
       const ang = dir.angleTo(to.clone().normalize());
       // Lead a moving target by where it will be when the ball lands.
-      const lead = target.forward().multiplyScalar(target.speed * to.length() / BALL_SPEED_H);
+      const lead = target.velocity().multiplyScalar(to.length() / BALL_SPEED_H);
       if (ang < .6) range = THREE.MathUtils.clamp(to.add(lead).length(), 15, 110);
     }
     // The guns go off one after another; update() fires them when their time comes.
@@ -357,9 +366,13 @@ export class World {
     const r = range * (1 + (Math.random() - .5) * spread * 2);
     const t = r / BALL_SPEED_H;
     const d = ship.side(side).applyAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - .5) * spread);
-    const vel = d.multiplyScalar(BALL_SPEED_H).add(ship.forward().multiplyScalar(ship.speed));
+    const vel = d.multiplyScalar(BALL_SPEED_H).add(ship.velocity());
     vel.y = .5 * G * t - (from.y - .5) / t;
     this.fx.shoot(from, vel, ship);
+    // Recoil: each gun rolls her away from the side that fired and nudges her that way.
+    const away = side === 'right' ? 1 : -1;
+    ship.motion.kick(0, away * IMPACT.gunRoll);
+    ship.drift -= away * IMPACT.gunDrift;
     this.fx.puff('smoke', from.clone().addScaledVector(ship.side(side), 1.5), { size: .9, vel: ship.side(side).multiplyScalar(3).setY(1) });
     this.fx.puff('fire', from, { size: .5 });
   }
@@ -386,6 +399,14 @@ export class World {
       const dmg = ship === this.boss ? 6 : this.immortal ? 0 : 5;
       ship.hp = Math.max(0, ship.hp - dmg);
       if (ship === this.player && dmg > 0) this.lastDamage = 'cannon';
+      // The blow shoves the hull along the ball's flight, turns her by where it struck and rolls her away from it.
+      const fly = ball.vel ? ball.vel.clone().setY(0) : new THREE.Vector3();
+      if (fly.lengthSq() > 1e-6) {
+        fly.normalize();
+        const at = ball.m.position.clone().sub(ship.pos);
+        applyImpulse(ship, at, fly.x * ship.mass * IMPACT.ballPush, fly.z * ship.mass * IMPACT.ballPush);
+        ship.motion.kick(0, -fly.dot(ship.side('right')) * IMPACT.ballRoll);
+      }
       this.fx.burst('fire', ball.m.position, 4, .6, 3);
       this.fx.burst('debris', ball.m.position, 5, 1, 5);
       this.fx.puff('smoke', ball.m.position, { size: 1.6 });
@@ -417,6 +438,7 @@ export class World {
     let goal = want;
     if (dist > 70) goal = Math.atan2(-toDir.x, -toDir.z);          // close in
     else if (dist < 28) goal = Math.atan2(toDir.x, toDir.z);       // open the range
+    goal = tackFor(goal, this.wind.toward);                          // no square-rigger sails into the wind
     let diff = THREE.MathUtils.euclideanModulo(goal - b.heading + Math.PI, Math.PI * 2) - Math.PI;
     b.rudder = THREE.MathUtils.clamp(diff * 2, -1, 1);
     b.throttle = dist > 70 ? 1 : .55;
@@ -432,7 +454,7 @@ export class World {
     const b = this.boss, to = this.bossHome.clone().sub(b.pos); to.y = 0;
     // Circle round the home point.
     const tangent = new THREE.Vector3(-to.z, 0, to.x).normalize().add(to.clone().normalize().multiplyScalar((to.length() - 40) / 40));
-    const goal = Math.atan2(-tangent.x, -tangent.z);
+    const goal = tackFor(Math.atan2(-tangent.x, -tangent.z), this.wind.toward);
     const diff = THREE.MathUtils.euclideanModulo(goal - b.heading + Math.PI, Math.PI * 2) - Math.PI;
     b.rudder = THREE.MathUtils.clamp(diff * 2, -1, 1);
     b.throttle = .45;
@@ -441,6 +463,9 @@ export class World {
   update(dt, input) {
     this.time += dt;
     const t = this.time, p = this.player;
+    const shift = this.wind.shift;
+    this.wind.update(dt, this.atmo.storm);
+    if (this.wind.shift !== shift && this.wind.shifting && this.state !== 'battle') this.ui.flash('Ветер меняется');
     if (this.state === 'sail' || this.state === 'battle') {
       if (p.hp > 0) {
         p.throttle = input.throttle;
@@ -456,6 +481,22 @@ export class World {
     }
     p.update(dt, t);
     if (!this.bossGone) this.boss.update(dt, t);
+    // A bow that drops hard into a sea at speed throws spray over the head.
+    for (const v of [p, this.boss]) {
+      if (v.sinking > 0 || (v === this.boss && this.bossGone)) continue;
+      const slam = -v.motion.pitchVelocity;
+      if (slam > HULL_PHYSICS.spray && v.speed > 6 && t - (v.sprayAt ?? -9) > .5) {
+        v.sprayAt = t;
+        const bow = v.pos.clone().addScaledVector(v.forward(), v.length * .45);
+        bow.y = waveHeight(bow.x, bow.z, t) + .6;
+        this.fx.puff('splash', bow, { size: .5 + slam * 12 + v.speed * .03, vel: v.forward().multiplyScalar(v.speed * .4).setY(3) });
+      }
+    }
+    // The two ships cannot pass through each other: they bounce, turn, and a hard blow does damage.
+    if (!this.bossGone && p.sinking < 1 && this.boss.sinking < 1) {
+      const hit = collideHulls(p, this.boss);
+      if (hit && hit.closing > RAM.threshold && this.time - (this.rammedAt ?? -9) > RAM.cooldown) this.onRam(hit);
+    }
     this.updateFloaters(dt, t);
     this.life.update(dt, t);
     this.updateDeck(dt, input);
@@ -638,8 +679,8 @@ export class World {
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const f = this.floaters[i];
       f.life -= dt;
+      driftFloater(f, dt, this.wind, [this.player]);
       f.yaw += f.spin * dt;
-      f.m.position.addScaledVector(f.drift, dt);
       f.m.position.y = waveHeight(f.m.position.x, f.m.position.z, t) - .05 - Math.max(0, 3 - f.life) * .4;
       f.m.rotation.y = f.yaw;
       if (f.life <= 0) { this.scene.remove(f.m); f.m.geometry.dispose(); this.floaters.splice(i, 1); }
@@ -654,6 +695,26 @@ export class World {
     this.ui.battleHud(null);
     this.ui.banner('«Каракатица» идёт ко дну!', 'Шрам прыгает в шлюпку. Смотрите, как шхуна уходит под воду.', 5000, false);
     this.onGold && this.onGold(BOSS_REWARD);
+  }
+
+  onRam(hit) {
+    this.rammedAt = this.time;
+    const p = this.player, b = this.boss, loss = ramDamage(hit);
+    // Both hulls rock from the blow, each away from where she was struck.
+    const rock = Math.min(IMPACT.ramRollMax, hit.closing * IMPACT.ramRoll);
+    p.motion.kick(0, -(hit.nx * p.side('right').x + hit.nz * p.side('right').z) * rock);
+    b.motion.kick(0, (hit.nx * b.side('right').x + hit.nz * b.side('right').z) * rock);
+    const mine = this.immortal ? 0 : Math.round(loss.a), his = Math.round(loss.b);
+    p.hp = Math.max(0, p.hp - mine);
+    b.hp = Math.max(0, b.hp - his);
+    if (mine > 0) this.lastDamage = 'ram';
+    const at = new THREE.Vector3(hit.x, 1.5, hit.z);
+    this.fx.burst('debris', at, 6 + Math.min(10, Math.round(hit.closing)), 1.2, 6);
+    this.fx.puff('splash', at.clone().setY(.4), { size: 1 + hit.closing * .1 });
+    sfx('hit');
+    this.shake = Math.max(this.shake ?? 0, Math.min(.8, .2 + hit.closing * .05));
+    this.ui.flash(hit.ramA ? `Таран! «Каракатица» −${his}` : hit.ramB ? `Шрам таранит! −${mine} прочности` : `Борт о борт: −${mine}`);
+    if (this.state === 'battle') this.ui.battleHud(p, b);
   }
 
   onShoreImpact(speed) {

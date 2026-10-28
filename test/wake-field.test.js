@@ -58,7 +58,8 @@ test('excluding one hull removes its pressure and history but preserves the othe
     wakeSurface.points=[ownPulse,otherPulse];wakeSurface.ships=[ownShip,otherShip];
     for(const [x,z] of [[110,200],[100,185.6]]){
       const visible=wakeHeight(x,z),remaining=wakeHeight(x,z,[otherPulse],[otherShip]);
-      assert.ok(visible>remaining&&remaining>0);
+      // The bow waves swing either way, so each hull's share is non-zero rather than positive.
+      assert.ok(visible!==remaining&&remaining!==0);
       assert.equal(wakeHeight(x,z,undefined,undefined,own),remaining);
       wakeSurface.points=[];wakeSurface.ships=[];const ambient=waveHeight(x,z,12);
       wakeSurface.points=[ownPulse,otherPulse];wakeSurface.ships=[ownShip,otherShip];

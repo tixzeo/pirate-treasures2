@@ -15,6 +15,7 @@ import { seaIntent } from './deck-walk.js';
 import { SimulationClock } from './simulation-clock.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { createMenu } from './menu.js';
+import { createWindHud } from './wind-hud.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
@@ -25,6 +26,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const ui = new UI();
+const windHud = createWindHud();
 ui.portrait = id => portrait(renderer, id);
 ui.portrait('captain').then(url => { $('introFace').src = url; }, () => {});
 const world = new World(renderer, ui);
@@ -259,6 +261,7 @@ renderer.setAnimationLoop(() => {
     if (mode === 'sea' && !ui.open) readKeys();
     // Dialogs hold the helm but the sea keeps moving.
     world.update(dt, mode === 'sea' && !ui.open ? input : { throttle: world.player.throttle * .98, rudder: 0 });
+    windHud.update(world.wind, world.player.heading);
   }
   },speed);
   if(mode==='island')activity.render();else world.render();

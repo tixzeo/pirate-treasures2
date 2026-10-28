@@ -3,6 +3,7 @@ import { hasKit, part, boundsOf } from './kit.js';
 import { waveHeight } from './sea.js';
 import { Vessel } from './ship.js';
 import { PIER_WIDTH, PIER_LENGTH } from './island.js';
+import { driftFloater } from './floaters.js';
 
 // Life on the water from Артем's Water Life Pack: buoys at the piers, gulls overhead, fish jumping by the ship,
 // flotsam drifting about, wreckage where a ship went down, and Scar's rowboat when his schooner sinks.
@@ -252,17 +253,19 @@ export class SeaLife {
       }
     }
 
+    const ships = [p, ...(w.bossGone ? [] : [w.boss])];
     for (const list of [this.flotsam, this.wreck]) for (let i = list.length - 1; i >= 0; i--) {
       const f = list[i];
       f.life -= dt;
+      driftFloater(f, dt, w.wind, ships);
       f.yaw += f.spin * dt;
-      f.m.position.addScaledVector(f.drift, dt);
       ride(f.m, t, f.draft - Math.max(0, 3 - f.life) * .5, .9);
       f.m.rotation.y = f.yaw;
       if (f.life <= 0) { this.scene.remove(f.m); list.splice(i, 1); }
     }
     // Drifting flotsam that wanders too far from the middle of the map turns back.
-    for (const f of this.flotsam) if (f.m.position.length() > 420) f.drift.copy(f.m.position).setY(0).normalize().multiplyScalar(-.4);
+    // The pull back is stronger than the wind can carry a barrel, even in a gale.
+    for (const f of this.flotsam) if (f.m.position.length() > 420) f.drift.copy(f.m.position).setY(0).normalize().multiplyScalar(-1);
 
     const b = this.boat;
     if (b) {

@@ -25,7 +25,7 @@ ok('foreground bosun fades',entry.meshes.length>0&&[...entry.materials.values()]
 world.setSeaControlMode('helm');ok('helm restores original crew materials',entry.meshes.length===0&&entry.materials.size===0);
 world.teleport(new T.Vector3(2000,0,2000),0);input.throttle=1;world.atmo.setWeather('storm');let maxPitch=0,maxRoll=0;
 for(let i=0;i<1800;i++){tick();maxPitch=Math.max(maxPitch,Math.abs(world.player.mesh.rotation.x));maxRoll=Math.max(maxRoll,Math.abs(world.player.mesh.rotation.z));}
-ok('storm under full sail keeps bounded smooth hull pose',world.player.speed>13&&maxPitch<=.10001&&maxRoll<=.16001,{maxPitch,maxRoll,speed:world.player.speed});
+ok('storm under full sail keeps bounded smooth hull pose',world.player.speed>world.player.maxSpeed*.85&&maxPitch<=.10001&&maxRoll<=.16001,{maxPitch,maxRoll,speed:world.player.speed});
 world.teleport(new T.Vector3(),0);input.throttle=0;world.atmo.setWeather('clear');world.setSeaControlMode('deck');tick(120);world.render();
 const keys=w.document.querySelector('.keys'),css=w.getComputedStyle(keys);ok('keyboard hint has a dark backing',css.backgroundColor!=='rgba(0, 0, 0, 0)'&&css.color==='rgb(255, 245, 223)',{background:css.backgroundColor,color:css.color});
 out.textContent='PASS '+results.length+' comfort checks';document.body.dataset.result=JSON.stringify({results});

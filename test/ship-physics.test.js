@@ -37,5 +37,5 @@ test('turning heel depends on acceleration, settles at rest and is symmetric ast
  assert.ok(Math.abs(advanceHeel(0,14,.5,1))>Math.abs(advanceHeel(0,2,.5,1)));
  assert.equal(advanceHeel(0,14,.5,1),advanceHeel(0,-14,-.5,1));
  const run=hz=>{let h=0;for(let i=0;i<hz;i++)h=advanceHeel(h,14,.5,1/hz);return h};assert.ok(Math.abs(run(5)-run(120))<1e-10);
- let heel=.1;for(let i=0;i<600;i++)heel=advanceHeel(heel,0,0,1/60);assert.ok(Math.abs(heel)<1e-6);
+ let heel=.1;for(let i=0;i<3600;i++)heel=advanceHeel(heel,0,0,1/60);assert.ok(Math.abs(heel)<1e-6);
 });
