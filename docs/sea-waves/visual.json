@@ -1,0 +1,182 @@
+[
+  {
+    "view": "Ясно",
+    "quality": "low",
+    "stats": {
+      "calls": 278,
+      "triangles": 847470,
+      "waterVertices": 48841,
+      "programs": 69
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Шторм",
+    "quality": "low",
+    "stats": {
+      "calls": 279,
+      "triangles": 847470,
+      "waterVertices": 48841,
+      "programs": 70
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Поворот",
+    "quality": "low",
+    "stats": {
+      "calls": 278,
+      "triangles": 847470,
+      "waterVertices": 48841,
+      "programs": 70
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Остановка",
+    "quality": "low",
+    "stats": {
+      "calls": 278,
+      "triangles": 847470,
+      "waterVertices": 48841,
+      "programs": 70
+    },
+    "shaderOK": true,
+    "trail": 0
+  },
+  {
+    "view": "Задний ход",
+    "quality": "low",
+    "stats": {
+      "calls": 278,
+      "triangles": 847470,
+      "waterVertices": 48841,
+      "programs": 70
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Ясно",
+    "quality": "medium",
+    "stats": {
+      "calls": 293,
+      "triangles": 847485,
+      "waterVertices": 48841,
+      "programs": 70
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Шторм",
+    "quality": "medium",
+    "stats": {
+      "calls": 294,
+      "triangles": 847485,
+      "waterVertices": 48841,
+      "programs": 71
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Поворот",
+    "quality": "medium",
+    "stats": {
+      "calls": 293,
+      "triangles": 847485,
+      "waterVertices": 48841,
+      "programs": 71
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Остановка",
+    "quality": "medium",
+    "stats": {
+      "calls": 293,
+      "triangles": 847485,
+      "waterVertices": 48841,
+      "programs": 71
+    },
+    "shaderOK": true,
+    "trail": 0
+  },
+  {
+    "view": "Задний ход",
+    "quality": "medium",
+    "stats": {
+      "calls": 293,
+      "triangles": 847485,
+      "waterVertices": 48841,
+      "programs": 71
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Ясно",
+    "quality": "high",
+    "stats": {
+      "calls": 429,
+      "triangles": 1222797,
+      "waterVertices": 48841,
+      "programs": 80
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Шторм",
+    "quality": "high",
+    "stats": {
+      "calls": 430,
+      "triangles": 1222797,
+      "waterVertices": 48841,
+      "programs": 80
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Поворот",
+    "quality": "high",
+    "stats": {
+      "calls": 430,
+      "triangles": 1226469,
+      "waterVertices": 48841,
+      "programs": 81
+    },
+    "shaderOK": true,
+    "trail": 14
+  },
+  {
+    "view": "Остановка",
+    "quality": "high",
+    "stats": {
+      "calls": 429,
+      "triangles": 1222797,
+      "waterVertices": 48841,
+      "programs": 81
+    },
+    "shaderOK": true,
+    "trail": 0
+  },
+  {
+    "view": "Задний ход",
+    "quality": "high",
+    "stats": {
+      "calls": 429,
+      "triangles": 1222797,
+      "waterVertices": 48841,
+      "programs": 81
+    },
+    "shaderOK": true,
+    "trail": 14
+  }
+]
