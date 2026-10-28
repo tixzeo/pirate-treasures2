@@ -9,6 +9,10 @@
 .wind b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .wind small { font-size: 11px; color: var(--muted); }
 .wind.irons small { color: #ff9a8e; }
+/* While the wind swings to a new quarter the arrow glows, so the change is seen as it happens. */
+.wind.shifting .arrow path { stroke: #fff1c4; filter: drop-shadow(0 0 3px var(--gold)); }
+@media (prefers-reduced-motion: no-preference) { .wind.shifting svg { animation: windShift 1.6s ease-in-out infinite; } }
+@keyframes windShift { 50% { opacity: .65; } }
 #hud[data-control="deck"] .wind { display: none; }
 /* On a phone the bottom belongs to the wheel and the guns: the dial goes under the goal, on the right. */
 @media (max-width: 520px) {

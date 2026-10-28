@@ -461,7 +461,9 @@ export class World {
   update(dt, input) {
     this.time += dt;
     const t = this.time, p = this.player;
+    const shift = this.wind.shift;
     this.wind.update(dt, this.atmo.storm);
+    if (this.wind.shift !== shift && this.wind.shifting && this.state !== 'battle') this.ui.flash('Ветер меняется');
     if (this.state === 'sail' || this.state === 'battle') {
       if (p.hp > 0) {
         p.throttle = input.throttle;

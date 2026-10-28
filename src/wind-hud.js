@@ -18,12 +18,13 @@ export function createWindHud(parent = document.getElementById('hud')) {
     update(wind, heading) {
       arrow.setAttribute('transform', `rotate(${(-wrap(wind.toward - heading) * 180 / Math.PI).toFixed(1)})`);
       const off = offWind(heading, wind.toward), text = `${Math.round(wind.speed * 1.94)} уз.|${pointOfSail(off)}`;
-      if (text === shown) return;
-      shown = text;
+      if (text + wind.shifting === shown) return;
+      shown = text + wind.shifting;
       const [k, n] = text.split('|');
       knots.textContent = `Ветер ${k}`;
       name.textContent = n;
       root.classList.toggle('irons', n === 'Левентик');
+      root.classList.toggle('shifting', !!wind.shifting);
     },
   };
 }
