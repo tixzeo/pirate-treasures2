@@ -97,6 +97,7 @@ button.ghost { background: rgba(10, 29, 41, .55); color: var(--fg); border-color
 
 /* Island treasure hunt HUD. */
 #matchHud header { display: flex; align-items: center; gap: 12px; }
+#matchHud header .menu-btn { margin-left: auto; }
 #matchHud h1 { font-size: 22px; flex: 1; text-align: center; margin-right: 110px; color: var(--gold); text-shadow: 0 2px 4px #000; }
 .stats { display: flex; justify-content: center; gap: 8px; margin-top: 8px; }
 .stat { background: rgba(10, 29, 41, .7); border: 1px solid rgba(242, 193, 78, .35); border-radius: 12px; padding: 4px 14px; text-align: center; min-width: 84px; }
