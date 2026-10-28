@@ -197,10 +197,10 @@ const fragment = /* glsl */`
     float b = size.x * 0.9 - dot(d, f);
     if (b <= -1.0 || b >= ${BOW_WAVE.reach.toFixed(1)}) return 0.0;
     float n = abs(dot(d, vec2(-f.y, f.x))) * ${Math.cos(BOW_WAVE.angle).toFixed(4)} - b * ${Math.sin(BOW_WAVE.angle).toFixed(4)};
-    float fade = smoothstep(-1.0, 3.0, b) * pow(1.0 - b / ${BOW_WAVE.reach.toFixed(1)}, 1.5) * smoothstep(1.0, 8.0, abs(ship.w));
-    float line = 1.0 - smoothstep(0.2, 2.0 + b * 0.05, abs(n - 0.3));
+    float fade = smoothstep(-1.0, 3.0, b) * pow(1.0 - b / ${BOW_WAVE.reach.toFixed(1)}, 2.0) * smoothstep(1.0, 8.0, abs(ship.w));
+    float line = 1.0 - smoothstep(0.0, 1.3 + b * 0.04, abs(n - 0.3));
     float crests = smoothstep(0.55, 1.0, cos(${BOW_WAVE.k.toFixed(4)} * (n - ${BOW_WAVE.run.toFixed(1)} * uWakeTime))) * (1.0 - smoothstep(0.5, ${BOW_WAVE.band.toFixed(1)}, n)) * step(0.0, n);
-    return max(line, crests * 0.45) * fade;
+    return max(line * 0.75, crests * 0.25) * fade;
   }
 
   void main() {
@@ -301,12 +301,12 @@ const fragment = /* glsl */`
       vec4 shape = uTrailShape[i];
       vec2 off = p - t.xy;
       float along = dot(off, shape.xy), across = dot(off, vec2(-shape.y,shape.x));
-      float width = t.w * (0.9 + t.z * 1.6), extent = shape.w + t.z * 2.0;
+      float width = t.w * (0.7 + t.z * 1.1), extent = shape.w + t.z * 2.0;
       if (abs(along) > extent || abs(across) > width * 1.2) continue;
       // A small meander breaks the outline; no noise or texture lookup per patch.
       across += sin(along * 0.8 + dot(t.xy,vec2(1.7,2.3))) * width * 0.15;
       float deposit = 1.0 - smoothstep(0.05, 1.0, length(vec2(along/extent,across/width)));
-      wake = max(wake, deposit * pow(1.0-t.z,1.2) * shape.z);
+      wake = max(wake, deposit * pow(1.0-t.z,1.8) * shape.z);
     }
     float ships = max(shipFoam(p, uShips[0], uShipSize[0]), shipFoam(p, uShips[1], uShipSize[1]));
     ships = max(ships, max(bowFoam(p, uShips[0], uShipSize[0]), bowFoam(p, uShips[1], uShipSize[1])));
@@ -314,7 +314,7 @@ const fragment = /* glsl */`
     float lace = texture2D(uFoam, p * 0.11 + uTime * vec2(0.012, 0.004)).a * 0.65 + texture2D(uFoam, p * 0.27 - uTime * vec2(0.006, 0.015)).a * 0.35;
     float breakup = smoothstep(0.23,0.72,noise(p * 0.19 + uTime * vec2(0.018,-0.011)));
     float grain = smoothstep(0.22,0.8,lace);
-    float shipFoamAmount = max(wake * 0.85, ships * 0.7) * mix(0.25,1.0,breakup);
+    float shipFoamAmount = max(wake * 0.55, ships * 0.7) * mix(0.25,1.0,breakup);
     float foam = max(max(crest * 0.48, surf * 0.64),shipFoamAmount) * grain;
     col = mix(col, vec3(0.95, 0.98, 1.0) * (0.2 + 0.8 * uLight), foam);
 
