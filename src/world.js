@@ -12,6 +12,7 @@ import { Post, pickQuality } from './post.js';
 import { character } from './characters.js';
 import { sfx } from './sound.js';
 import { PLAYER_SHIP, SHIP_RULES } from './ship-config.js';
+import { HULL_PHYSICS } from './ship-physics.js';
 import { coastDistance, coastPush, pierPush } from './ship-collision.js';
 import { terrainPush } from './island-shape.js';
 import { DeckWalker, makeDeckZone } from './deck-walk.js';
@@ -463,6 +464,17 @@ export class World {
     }
     p.update(dt, t);
     if (!this.bossGone) this.boss.update(dt, t);
+    // A bow that drops hard into a sea at speed throws spray over the head.
+    for (const v of [p, this.boss]) {
+      if (v.sinking > 0 || (v === this.boss && this.bossGone)) continue;
+      const slam = -v.motion.pitchVelocity;
+      if (slam > HULL_PHYSICS.spray && v.speed > 6 && t - (v.sprayAt ?? -9) > .5) {
+        v.sprayAt = t;
+        const bow = v.pos.clone().addScaledVector(v.forward(), v.length * .45);
+        bow.y = waveHeight(bow.x, bow.z, t) + .6;
+        this.fx.puff('splash', bow, { size: .5 + slam * 12 + v.speed * .03, vel: v.forward().multiplyScalar(v.speed * .4).setY(3) });
+      }
+    }
     // The two ships cannot pass through each other: they bounce, turn, and a hard blow does damage.
     if (!this.bossGone && p.sinking < 1 && this.boss.sinking < 1) {
       const hit = collideHulls(p, this.boss);

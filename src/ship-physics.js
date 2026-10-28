@@ -4,7 +4,7 @@ export const HULL_PHYSICS = Object.freeze({
   dragLinear:.20, dragQuadratic:.003, stopSpeed:.015, maxStep:1/120,
   helmRate:1.8, yawTime:.9, minTurnLength:.85, heelTime:.8, heelLimit:.1,
   pitchLimit:.1, rollLimit:.16, draft:.3, floodDrag:.8,
-  skid:.12, driftTime:1.1,
+  skid:.12, driftTime:1.1, slope:.7, spray:.05,
 });
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const waterDrag = speed => HULL_PHYSICS.dragLinear*speed + HULL_PHYSICS.dragQuadratic*speed*Math.abs(speed);
@@ -45,4 +45,11 @@ export function advanceDrift(drift,speed,yaw,leeway,length,dt) {
   if(![drift,speed,yaw,dt].every(Number.isFinite)||dt<0)return Number.isFinite(drift)?drift:0;
   const target=speed*yaw*HULL_PHYSICS.skid+(Number.isFinite(leeway)?leeway:0);
   return target+(drift-target)*Math.exp(-dt/(HULL_PHYSICS.driftTime*Math.sqrt(Math.max(8,length)/32)));
+}
+
+// Gravity along the water's slope: down the back of a wave she gathers way, up its face she loses it.
+// pitch: the water plane under the hull, bow up positive. Fades out as she stops, so a ship at rest stays at rest.
+export function slopeSurge(speed,pitch,dt) {
+  if(![speed,pitch,dt].every(Number.isFinite)||dt<0)return Number.isFinite(speed)?speed:0;
+  return speed-9.81*Math.sin(pitch)*HULL_PHYSICS.slope*clamp(Math.abs(speed)/3,0,1)*dt;
 }

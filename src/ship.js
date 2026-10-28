@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
-import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, HULL_PHYSICS } from './ship-physics.js';
+import { advanceSurge, advanceSteering, advanceHeel, advanceDrift, slopeSurge, HULL_PHYSICS } from './ship-physics.js';
 import { hullMass } from './ship-contact.js';
 import { sailDrive, offWind, windSpeedFactor, windHeel, leeway } from './wind.js';
 import { pbr } from './materials.js';
@@ -233,6 +233,7 @@ export class Vessel {
     this.turnRate = turnRate;
     this.hp = this.maxHp = hp;
     this.heel = 0;
+    this.slope = 0;     // pitch of the water under her at the last step, bow up positive
     this.sinking = 0;
     this.motion = new HullMotion();
     this.waterHeight = (x,z,t) => waveHeight(x,z,t,this);
@@ -243,7 +244,7 @@ export class Vessel {
   get width() { return this.mesh.userData.width; }
   get mass() { return hullMass(this.length, this.width); }
   resetDynamics() {
-    this.speed=this.yaw=this.drift=this.helm=this.heel=this.rudder=this.throttle=0;
+    this.speed=this.yaw=this.drift=this.helm=this.heel=this.rudder=this.throttle=this.slope=0;
     this.motion.reset();
   }
   resolveContact(push,retention=.5) {
@@ -278,6 +279,7 @@ export class Vessel {
     const top=this.throttle>0?this.maxSpeed*this.drive:this.maxSpeed;
     this.speed = advanceSurge(this.speed,flooded?0:this.throttle,top,dt,1+3*this.sinking);
     if(flooded)this.speed*=Math.exp(-HULL_PHYSICS.floodDrag*Math.max(0,dt));
+    else this.speed=slopeSurge(this.speed,this.slope,dt);
     const steering=advanceSteering(this,flooded?0:this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
     this.helm=steering.helm;this.yaw=steering.yaw;this.heading+=steering.angle;
     this.drift=advanceDrift(this.drift,this.speed,this.yaw,w&&!flooded?leeway(this.heading,w,sails):0,this.mesh.userData.length,dt);
@@ -286,6 +288,7 @@ export class Vessel {
 
     const water = sampleHullWater(this.waterHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
       length: this.mesh.userData.length, width: this.mesh.userData.width }, t);
+    if (Number.isFinite(water.pitch)) this.slope = water.pitch;
     const motion = this.motion.update(dt, { ...water, heel: this.heel }, this.mesh.userData.length);
     // Sinking goes in stages: the hull settles and lists, then the bow lifts and the stern drags her under.
     const s = this.sinking, ss = THREE.MathUtils.smoothstep;
