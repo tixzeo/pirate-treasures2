@@ -22,6 +22,12 @@ export function setMuted(v) { muted = v; }
 // For sounds that live longer than one call, like the sea in ambience.js.
 export function audioOut() { const a = ac(); return a && { ctx: a, master }; }
 
+const base = import.meta.env ? import.meta.env.BASE_URL : './';
+export const loadSound = (a, name) => fetch(`${base}sounds/${name}.ogg`)
+  .then(r => r.ok ? r.arrayBuffer() : null)
+  .then(b => b && a.decodeAudioData(b))
+  .catch(() => null);
+
 function tone(freq, dur, { type = 'sine', vol = .3, slide = 0, delay = 0 } = {}) {
   const a = ac(); if (!a) return;
   const t = a.currentTime + delay;

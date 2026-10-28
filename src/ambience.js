@@ -2,17 +2,11 @@
 // creaks when the hull is worked, gulls calling from where they actually fly. Levels come from ambience-mix.js.
 // A recording that is missing or fails to decode is simply not heard.
 import { LOOPS, SHOTS, SILENT, shotFiles, loopLevels, creakRate, CREAK_GAP, gullRate, GULL_GAP, MAX_GULLS, chance } from './ambience-mix.js';
-import { audioOut, muted } from './sound.js';
+import { audioOut, loadSound, muted } from './sound.js';
 
-const base = import.meta.env ? import.meta.env.BASE_URL : './';
 // Loudness of each recording in the mix once it is levelled, so loopLevels can speak in plain 0..1.
-const TRIM = { hull: .5, bow: .7, surf: .6, rigging: .35, 'rigging-strong': .4, sails: .3, storm: .6, creak: .55, gull: .5 };
+const TRIM = { hull: .5, bow: .7, surf: .9, rigging: .35, 'rigging-strong': .45, sails: .35, storm: .6, creak: .45, gull: .35 };
 const FADE = .4; // seconds for a loop to follow a change
-
-export const loadSound = (ctx, name) => fetch(`${base}sounds/${name}.ogg`)
-  .then(r => r.ok ? r.arrayBuffer() : null)
-  .then(b => b && ctx.decodeAudioData(b))
-  .catch(() => null);
 
 const place = (node, x, y, z) => {
   if (node.positionX) { node.positionX.value = x; node.positionY.value = y; node.positionZ.value = z; }
