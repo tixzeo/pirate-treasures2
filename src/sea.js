@@ -3,6 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
 import { SWELLS, swell, PACKET_GLSL } from './waves.js';
 import { WakeTrail, WAKE } from './wake.js';
+import { WAKE_GLSL, WAKE_UNIFORMS, wakeSurface } from './wake-field.js';
 export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
@@ -22,15 +23,17 @@ const CHOP = 1.8; // how far crests lean together (Gerstner); 0 gives plain sine
 
 const vertex = /* glsl */`
   uniform float uTime;
-  uniform vec4 uSwell[4];   // dir.x, dir.y, k, speed
-  uniform float uAmp[4];
-  uniform float uPhase[4];
+  uniform vec4 uSwell[${SWELLS.length}];   // dir.x, dir.y, k, speed
+  uniform float uAmp[${SWELLS.length}];
+  uniform float uPhase[${SWELLS.length}];
   uniform vec2 uSeaCenter;
   uniform float uFarPlane;
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
+  varying vec2 vWakeSlope;
   ${PACKET_GLSL}
+  ${WAKE_GLSL}
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vec2 base = w.xz;
@@ -38,17 +41,23 @@ const vertex = /* glsl */`
     float detail = (1.0-uFarPlane) * (1.0-smoothstep(${(SIZE * .34).toFixed(1)},${(SIZE * .48).toFixed(1)},max(gridOffset.x,gridOffset.y)));
     float h = 0.0;
     vec3 n = vec3(0.0, 1.0, 0.0);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < ${SWELLS.length}; i++) {
       vec2 d = uSwell[i].xy;
       float k = uSwell[i].z, a = uAmp[i]*detail;
       vec3 packet = swellPacket(base, d, k, uTime, uPhase[i]);
-      float ph = dot(base, d) * k + uTime * uSwell[i].w + uPhase[i];
-      float s = sin(ph), c = cos(ph);
+      vec3 ph = swellPhase(base,d,k,uSwell[i].w,uTime,uPhase[i]);
+      float s = sin(ph.x), c = cos(ph.x);
       h += a * packet.x * s;
       // Gerstner: points slide toward the crest, so crests sharpen and troughs widen.
       w.xz += ${CHOP.toFixed(2)} * a * packet.x * d * c;
-      n.xz -= d * k * a * packet.x * c + packet.yz * a * s;
+      n.xz -= a * (packet.x * ph.yz * c + packet.yz * s);
       n.y -= ${CHOP.toFixed(2)} * k * a * packet.x * s;
+    }
+    vWakeSlope = vec2(0.0);
+    if(detail>0.001){
+      vec3 wake = wakeField(w.xz) * detail;
+      h += wake.x;
+      vWakeSlope = wake.yz;
     }
     w.y += h;
     vWorld = w.xyz;
@@ -119,8 +128,6 @@ const fragment = /* glsl */`
   uniform sampler2D uRefl;             // the scene as the water mirrors it (high quality only)
   uniform mat4 uReflMatrix;
   uniform float uUseRefl;
-  uniform vec4 uShips[2];              // x, z, heading, speed
-  uniform vec2 uShipSize[2];           // half length, half width
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
@@ -130,12 +137,13 @@ const fragment = /* glsl */`
   uniform vec2 uCoastRot[${MAX_ISLES}]; // cos/sin of island yaw
   uniform vec2 uSeaCenter;
   uniform float uFarPlane;
-  uniform vec4 uTrail[${TRAIL}];       // x, z, age 0..1, width
-  uniform vec4 uTrailShape[${TRAIL}];  // direction x/z, strength, half length
+  ${WAKE_UNIFORMS}
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
+  varying vec2 vWakeSlope;
 
+  ${PACKET_GLSL}
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
@@ -190,19 +198,30 @@ const fragment = /* glsl */`
     float near = 1.0 - smoothstep(40.0, 230.0, dist);
     // Medium waves too short for the mesh: they only bend the light, with the same lean-in crests as the swell.
     vec3 n = vNormal;
+    // Reuse the analytic slopes already evaluated for grid displacement.
+    // Fine ocean ripples below remain per-pixel; the ship fronts use the mesh.
+    n.xz -= vWakeSlope;
     for (int i = 0; i < 4; i++) {
       float fi = float(i);
       vec2 d = normalize(vec2(cos(fi * 2.1 + 0.6), sin(fi * 2.1 + 0.6)));
       float k = 6.2832 / (9.0 - fi * 1.7), a = 0.05 - fi * 0.009;
-      float ph = dot(p, d) * k + uTime * sqrt(9.8 * k);
-      n.xz -= d * k * a * cos(ph) * near;
-      n.y -= 1.2 * k * a * sin(ph) * near;
+      if(near>0.001){
+        vec3 field=swellField(p,vec4(d,k,sqrt(9.8*k)),uTime,fi*1.9);
+        n.xz -= a * field.yz * near;
+        n.y -= 1.2 * k * a * field.x * near;
+      }
     }
     // Two layers of small ripples drifting across each other so the sun breaks into sparkles.
-    vec2 rippleWarp = 0.18 * sin(p.yx * vec2(0.031,0.023) + uTime * vec2(0.11,-0.07));
-    vec3 r1 = texture2D(uRipples, p * 0.045 + rippleWarp + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
-    vec3 r2 = texture2D(uRipples, p * 0.083 - rippleWarp * 0.73 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
-    n = normalize(n + vec3(r1.x + r2.x * 0.7, 0.0, r1.y + r2.y * 0.7) * uRippleK * (0.75 * near + 0.1));
+    vec2 rippleWarp = 0.35 * vec2(sin(dot(p,vec2(0.027,0.019))+uTime*0.11),sin(dot(p,vec2(-0.014,0.023))-uTime*0.07));
+    vec2 uv1=vec2(0.8*p.x-0.6*p.y,0.6*p.x+0.8*p.y);
+    vec2 uv2=vec2(-0.28*p.x+0.96*p.y,-0.96*p.x-0.28*p.y);
+    vec3 r1 = texture2D(uRipples, uv1 * 0.045 + rippleWarp + uTime * vec2(0.011, 0.007)).xyz * 2.0 - 1.0;
+    vec3 r2 = texture2D(uRipples, uv2 * 0.083 - rippleWarp * 0.73 + uTime * vec2(-0.009, 0.013)).xyz * 2.0 - 1.0;
+    // Rotate sampled slopes back to world axes with the UV basis transpose.
+    vec2 slope1=vec2(0.8*r1.x+0.6*r1.y,-0.6*r1.x+0.8*r1.y);
+    vec2 slope2=vec2(-0.28*r2.x-0.96*r2.y,0.96*r2.x-0.28*r2.y);
+    vec2 ripples=(slope1+slope2*0.7)*uRippleK*(0.45*near+0.07);
+    n = normalize(n + vec3(ripples.x,0.0,ripples.y));
 
     vec3 view = normalize(cameraPosition - vWorld);
     float ndv = max(dot(n, view), 0.0);
@@ -371,7 +390,7 @@ export class Sea {
     }
   }
 
-  // Ships leave a fading line of foam behind them.
+  // Ships leave expanding wavelets and fading foam at their actual past positions.
   addWake(dt, ships) {
     const sources = ships.slice(0,2).map(s => ({ id:s, x:s.pos.x, z:s.pos.z, heading:s.heading, speed:s.speed,
       length:s.mesh.userData.length, width:s.mesh.userData.width, active:s.sinking < .3 && !!s.mesh.parent }));
@@ -381,6 +400,7 @@ export class Sea {
       this.uniforms.uShipSize.value[i].set(s?.length/2||0,s?.width/2||0);
     }
     const trail = this.wakes.update(dt,sources), u = this.uniforms.uTrail.value, shape = this.uniforms.uTrailShape.value;
+    wakeSurface.points=trail; wakeSurface.ships=sources;
     for (let i = 0; i < TRAIL; i++) {
       const t = trail[i];
       if (t) { u[i].set(t.x,t.z,t.age,t.width); shape[i].set(t.fx,t.fz,t.strength,t.extent); }

@@ -232,6 +232,7 @@ export class Vessel {
     this.heel = 0;
     this.sinking = 0;
     this.motion = new HullMotion();
+    this.waterHeight = (x,z,t) => waveHeight(x,z,t,this);
   }
 
   get pos() { return this.mesh.position; }
@@ -267,7 +268,7 @@ export class Vessel {
     this.pos.addScaledVector(this.forward(), this.speed * dt);
     this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt);
 
-    const water = sampleHullWater(waveHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
+    const water = sampleHullWater(this.waterHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
       length: this.mesh.userData.length, width: this.mesh.userData.width }, t);
     const motion = this.motion.update(dt, { ...water, heel: this.heel }, this.mesh.userData.length);
     // Sinking goes in stages: the hull settles and lists, then the bow lifts and the stern drags her under.
