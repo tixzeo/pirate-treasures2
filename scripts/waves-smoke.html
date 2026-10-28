@@ -6,11 +6,11 @@ await new Promise(r=>frame.addEventListener('load',r));const w=frame.contentWind
 const {world,input}=w.game;await world.kitDone;while(!world.crew.captain)await new Promise(r=>setTimeout(r,30));
 const T=await import('/node_modules/three/build/three.module.js'),waves=await import('/src/waves.js');
 w.document.getElementById('go').click();world.renderer.setAnimationLoop(null);input.throttle=0;
-const uniforms={uSwell:world.sea.uniforms.uSwell,uAmp:world.sea.uniforms.uAmp,uPhase:world.sea.uniforms.uPhase,uProbe:{value:new T.Vector3()}};
+const uniforms={uSwell:world.sea.uniforms.uSwell,uAmp:world.sea.uniforms.uAmp,uPhase:world.sea.uniforms.uPhase,uProbe:{value:new T.Vector3()},uComponent:{value:0}};
 const material=new T.ShaderMaterial({uniforms,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:`
-uniform vec4 uSwell[4];uniform float uAmp[4];uniform float uPhase[4];uniform vec3 uProbe;
+uniform vec4 uSwell[${waves.SWELLS.length}];uniform float uAmp[${waves.SWELLS.length}];uniform float uPhase[${waves.SWELLS.length}];uniform vec3 uProbe;uniform int uComponent;
 ${waves.PACKET_GLSL}
-void main(){float h=0.;for(int i=0;i<4;i++){vec4 s=uSwell[i];float a=swellPacket(uProbe.xy,s.xy,s.z,uProbe.z,uPhase[i]).x;h+=uAmp[i]*a*sin(dot(uProbe.xy,s.xy)*s.z+uProbe.z*s.w+uPhase[i]);}
+void main(){vec3 field=vec3(0.);for(int i=0;i<${waves.SWELLS.length};i++){field+=uAmp[i]*swellField(uProbe.xy,uSwell[i],uProbe.z,uPhase[i]);}float h=uComponent==0?field.x:(uComponent==1?field.y:field.z);
 vec2 code=fract((h/6.+.5)*vec2(1.,255.));code.x-=code.y/255.;gl_FragColor=vec4(code,0.,1.);}`});
 // The renderer belongs to the iframe realm; its typed-array checks must receive
 // buffers from that realm too, rather than the parent test document's buffers.
@@ -26,12 +26,15 @@ for(const gain of [1,1.9]){
  world.sea.uniforms.uAmp.value=waves.SWELLS.map(s=>s.amp*gain);
  for(let i=0;i<12;i++){
   const x=Math.sin(i*1.3)*713,z=Math.cos(i*.7)*539,t=i*3.1;
-  uniforms.uProbe.value.set(x,z,t);world.renderer.setRenderTarget(target);world.renderer.render(scene,camera);world.renderer.readRenderTargetPixels(target,0,0,1,1,pixel);
-  const actual=(pixel[0]/255+pixel[1]/65025-.5)*6,expected=waves.waveHeight(x,z,t);maxError=Math.max(maxError,Math.abs(actual-expected));
+  const expected=waves.SWELLS.reduce((sum,s)=>{const f=waves.swellSample(s,x,z,t);return sum.map((v,j)=>v+[f.height,f.dx,f.dz][j]*gain)},[0,0,0]);
+  for(let j=0;j<3;j++){
+   uniforms.uComponent.value=j;uniforms.uProbe.value.set(x,z,t);world.renderer.setRenderTarget(target);world.renderer.render(scene,camera);world.renderer.readRenderTargetPixels(target,0,0,1,1,pixel);
+   const actual=(pixel[0]/255+pixel[1]/65025-.5)*6;maxError=Math.max(maxError,Math.abs(actual-expected[j]));
+  }
  }
 }
 world.renderer.setRenderTarget(null);waves.swell.k=before;target.dispose();quad.geometry.dispose();material.dispose();
-ok('CPU flotation and GPU packets agree in clear and storm water',maxError<.002,{maxError,samples:24});
+ok('CPU flotation, analytic slopes and GPU packets agree in clear and storm water',maxError<.002,{maxError,readbacks:72});
 ok('wave variety adds no vertices',world.sea.mesh.geometry.attributes.position.count===221*221);
 function view(name){
  if(name==='next')time+=1.5;else current=name;

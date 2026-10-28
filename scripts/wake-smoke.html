@@ -8,7 +8,7 @@ const T=await import('/node_modules/three/build/three.module.js');w.document.get
 const style=w.document.createElement('style');style.textContent='body>*:not(canvas){display:none!important}';w.document.head.append(style);
 function view(name){
  cancelAnimationFrame(animation);
- current=name;world.atmo.auto=false;world.atmo.setTime(name==='Шторм'?15:13);world.atmo.setWeather(name==='Шторм'?'storm':'clear');for(let i=0;i<900;i++)world.atmo.update(1/60,world.camera);
+ current=name;world.atmo.auto=false;world.atmo.setTime(name==='Шторм'?15:name==='Без блика'?9:13);world.atmo.setWeather(name==='Шторм'?'storm':'clear');for(let i=0;i<900;i++)world.atmo.update(1/60,world.camera);
  const p=world.player;p.speed=12;p.heading=0;p.yaw=0;p.helm=0;p.rudder=0;p.throttle=0;p.sinking=0;
  world.sea.wakes.clear();
  for(let i=0;i<=600;i++){
@@ -29,6 +29,7 @@ function view(name){
  out.textContent=(failed?'FAIL':'PASS')+' · '+name+' · '+world.post.quality+' · '+JSON.stringify(stats);document.body.dataset.result=JSON.stringify(result);
 }
 for(const b of document.querySelectorAll('button'))b.onclick=()=>view(b.textContent);
+const glint=document.createElement('button');glint.textContent='Без блика';glint.onclick=()=>view(glint.textContent);document.querySelector('nav').append(glint);
 const sail=document.createElement('button');sail.textContent='Движение';document.querySelector('nav').append(sail);
 sail.onclick=()=>{
  view('Ясно');let frames=0,last=performance.now(),elapsed=0;

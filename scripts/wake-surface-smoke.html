@@ -1,0 +1,78 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Diverging wave GPU checks</title><style>body{background:#10202d;color:#fff;font:14px monospace;white-space:pre-wrap}</style></head><body>Loading…<script type="module">
+import * as T from 'three';
+import {Sea} from '/src/sea.js';
+import {WAKE_GLSL,wakeSurface,wakePulse,bowPressure} from '/src/wake-field.js';
+const results=[];const ok=(name,pass,detail)=>{results.push({name,pass,detail});if(!pass)throw Error(name+': '+JSON.stringify(detail))};
+try{
+ const scene=new T.Scene();scene.fog=new T.Fog('#acc',200,500);
+ const sea=new Sea(scene,new T.Vector3(1,1,1)),renderer=new T.WebGLRenderer(),target=new T.WebGLRenderTarget(1,1),pixel=new Uint8Array(4);
+ const uniforms={...sea.uniforms,uProbe:{value:new T.Vector2()},uComponent:{value:0}};
+ const material=new T.ShaderMaterial({uniforms,vertexShader:'void main(){gl_Position=vec4(position.xy,0.,1.);}',fragmentShader:`uniform vec2 uProbe;uniform int uComponent;${WAKE_GLSL}
+ void main(){vec3 f=wakeField(uProbe);float h=uComponent==0?f.x:(uComponent==1?f.y:f.z);vec2 code=fract((h/6.+.5)*vec2(1.,255.));code.x-=code.y/255.;gl_FragColor=vec4(code,0.,1.);}`});
+ const quad=new T.Scene();quad.add(new T.Mesh(new T.PlaneGeometry(2,2),material));const camera=new T.Camera();
+ const ship={pos:new T.Vector3(),heading:0,speed:12,sinking:0,mesh:{parent:true,userData:{length:32,width:7}}};
+ let readbacks=0,maxError=0,maxHeight=0;
+ for(const mode of ['slow','full','turn','reverse','stopped','sinking','teleport']){
+  sea.wakes.clear();ship.sinking=0;
+  for(let i=0;i<480;i++){
+   const t=i/60;ship.speed=mode==='slow'?2:mode==='reverse'?-5:12;
+   ship.heading=mode==='turn'?t*.15:0;
+   ship.pos.set(mode==='turn'?1800-80*(1-Math.cos(t*.15)):1800,0,mode==='turn'?1880-80*Math.sin(t*.15):1920-t*ship.speed);
+   sea.addWake(1/60,[ship]);
+  }
+  if(mode==='stopped'){ship.speed=0;for(let i=0;i<420;i++)sea.addWake(1/60,[ship]);}
+  if(mode==='sinking'){ship.sinking=.5;for(let i=0;i<420;i++)sea.addWake(1/60,[ship]);}
+  if(mode==='teleport'){ship.pos.x+=500;sea.addWake(1/60,[ship]);}
+  const probes=[];
+  for(const p of sea.wakes.points.filter((_,i)=>i%3===0)){
+   const radius=p.width*.75+p.age*6*4;
+   probes.push([p.x,p.z],[p.x-p.fz*radius,p.z+p.fx*radius],[p.x+p.fz*(radius+2),p.z-p.fx*(radius+2)]);
+  }
+  const fx=-Math.sin(ship.heading)*Math.sign(ship.speed||1),fz=-Math.cos(ship.heading)*Math.sign(ship.speed||1);
+  probes.push([ship.pos.x+fx*14.4,ship.pos.z+fz*14.4],[0,0],[ship.pos.x+2,ship.pos.z]);
+  let error=0;
+  for(const [x,z] of probes){
+   const fields=[...wakeSurface.points.map(p=>wakePulse(p,x,z)),...wakeSurface.ships.map(s=>bowPressure(s,x,z))];
+   const expected=fields.reduce((v,f)=>[v[0]+f.height,v[1]+f.dx,v[2]+f.dz],[0,0,0]);maxHeight=Math.max(maxHeight,Math.abs(expected[0]));
+   for(let c=0;c<3;c++){
+    uniforms.uProbe.value.set(x,z);uniforms.uComponent.value=c;renderer.setRenderTarget(target);renderer.render(quad,camera);renderer.readRenderTargetPixels(target,0,0,1,1,pixel);readbacks++;
+    const h=(pixel[0]/255+pixel[1]/65025-.5)*6;error=Math.max(error,Math.abs(h-expected[c]));
+   }
+  }
+  maxError=Math.max(maxError,error);ok('CPU/GPU height and slope: '+mode,error<.001,{error,points:sea.wakes.points.length,probes:probes.length});
+  if(mode==='stopped'||mode==='sinking')ok(mode+' has no persistent wave source',wakeSurface.points.length===0&&wakeSurface.ships.every(s=>bowPressure(s,s.x,s.z).height===0));
+ }
+ ok('all wave shader programs compile',renderer.info.programs.every(p=>p.diagnostics?.runnable!==false));
+ // Exercise the actual sea vertex shader, including the new slope varying.
+ // A tiny top-down quad samples the same point without making interpolation
+ // error over the full 3.18m grid part of this CPU/GPU formula check.
+ const vertexUniforms={...sea.uniforms,uComponent:{value:0}};
+ vertexUniforms.uAmp={value:sea.uniforms.uAmp.value.map(()=>0)};
+ const vertexMaterial=new T.ShaderMaterial({uniforms:vertexUniforms,vertexShader:sea.mesh.material.vertexShader,
+  fragmentShader:`uniform int uComponent;varying float vHeight;varying vec2 vWakeSlope;
+   void main(){float h=uComponent==0?vHeight:(uComponent==1?vWakeSlope.x:vWakeSlope.y);vec2 code=fract((h/6.+.5)*vec2(1.,255.));code.x-=code.y/255.;gl_FragColor=vec4(code,0.,1.);}`});
+ const probeMesh=new T.Mesh(new T.PlaneGeometry(.002,.002).rotateX(-Math.PI/2),vertexMaterial),probeScene=new T.Scene();
+ probeMesh.frustumCulled=false;probeScene.add(probeMesh);
+ const probeCamera=new T.OrthographicCamera(-.001,.001,.001,-.001,.1,100);
+ const source={pos:new T.Vector3(1800,0,1800),heading:0,speed:12,sinking:0,mesh:{parent:true,userData:{length:32,width:7}}};
+ sea.wakes.clear();sea.addWake(0,[source]);sea.addWake(.8,[source]);
+ let vertexError=0;
+ for(const [x,z] of [[1800,1785.6],[1805,1814.4],[1800,1850]]){
+  probeMesh.position.set(x,0,z);vertexUniforms.uSeaCenter.value.set(x,z);
+  probeCamera.position.set(x,50,z);probeCamera.up.set(0,0,-1);probeCamera.lookAt(x,0,z);
+  const f=[...wakeSurface.points.map(p=>wakePulse(p,x,z)),...wakeSurface.ships.map(s=>bowPressure(s,x,z))]
+   .reduce((v,f)=>[v[0]+f.height,v[1]+f.dx,v[2]+f.dz],[0,0,0]);
+  for(let c=0;c<3;c++){
+   vertexUniforms.uComponent.value=c;renderer.setRenderTarget(target);renderer.render(probeScene,probeCamera);renderer.readRenderTargetPixels(target,0,0,1,1,pixel);readbacks++;
+   vertexError=Math.max(vertexError,Math.abs((pixel[0]/255+pixel[1]/65025-.5)*6-f[c]));
+  }
+ }
+ ok('actual sea vertex height and slope reach the fragment',vertexError<.001,{vertexError});
+ // Compile and draw the complete shipping material too, not just probe shaders.
+ renderer.setRenderTarget(null);renderer.setSize(64,64);const seaCamera=new T.PerspectiveCamera(55,1,.1,200);
+ seaCamera.position.set(1800,30,1850);seaCamera.lookAt(1800,0,1800);sea.update(12,source.pos);renderer.render(scene,seaCamera);
+ ok('complete sea and backdrop programs compile',renderer.info.programs.every(p=>p.diagnostics?.runnable!==false));
+ const result={results,readbacks,maxError,maxHeight};document.body.textContent='PASS\n'+JSON.stringify(result,null,2);document.body.dataset.result=JSON.stringify(result);
+ renderer.dispose();target.dispose();probeMesh.geometry.dispose();vertexMaterial.dispose();
+}catch(e){document.body.textContent='FAIL '+e.stack;document.body.dataset.result=JSON.stringify({results,error:e.stack})}
+</script></body></html>
