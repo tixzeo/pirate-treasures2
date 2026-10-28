@@ -582,7 +582,7 @@ export class World {
     // Looking ahead of the bow from behind; the further the view is turned, the more it looks at the ship itself.
     const ahead = p.pos.clone().addScaledVector(f, cam.ahead).add(new THREE.Vector3(0, cam.lookY, 0));
     const look = ahead.lerp(p.pos.clone().setY(p.pos.y + cam.lookY), Math.min(1, Math.abs(Math.sin(this.camYaw / 2)) * 2));
-    const b = this.boss, watch = (this.state === 'battle' && b.hp > 0) || (b.hp <= 0 && b.sinking < LOOK_UNTIL);
+    const b = this.boss, watch = (this.state === 'battle' && b.hp > 0) || (b.hp <= 0 && !this.bossGone && b.sinking < LOOK_UNTIL);
     this.bossLook = easeBossLook(this.bossLook, watch ? BOSS_LOOK : 0, dt);
     if (this.bossLook > 1e-4) look.lerp(b.pos, this.bossLook);
     this.camera.lookAt(look);
