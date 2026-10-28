@@ -1,4 +1,5 @@
-// Sounds made on the fly with WebAudio, like in part one: no audio files to load.
+// Sounds made on the fly with WebAudio, like in part one. Where a real recording exists (public/sounds)
+// it plays instead, once loaded; the made-up sound stays as the fallback.
 let ctx = null, master = null;
 export let muted = false;
 // Captain request, 26.10.2026: temporarily silence thunder during playtesting.
@@ -12,12 +13,40 @@ function ac() {
     master = ctx.createGain();
     master.gain.value = .5;
     master.connect(ctx.destination);
+    loadRecordings();
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
 }
 
 export function setMuted(v) { muted = v; }
+
+// For sounds that live longer than one call, like the sea in ambience.js.
+export function audioOut() { const a = ac(); return a && { ctx: a, master }; }
+
+const base = import.meta.env ? import.meta.env.BASE_URL : './';
+export const loadSound = (a, name) => fetch(`${base}sounds/${name}.ogg`)
+  .then(r => r.ok ? r.arrayBuffer() : null)
+  .then(b => b && a.decodeAudioData(b))
+  .catch(() => null);
+
+// Takes of each recorded sound (cannon-1.ogg, cannon-2.ogg...) and how loud they sit in the mix.
+const RECORDED = { cannon: [2, .9], hit: [1, .7], splash: [1, .6] };
+const recordings = {};
+function loadRecordings() {
+  for (const [name, [takes]] of Object.entries(RECORDED)) for (let i = 1; i <= takes; i++)
+    loadSound(ctx, `${name}-${i}`).then(buf => buf && (recordings[name] ||= []).push(buf));
+}
+function playRecording(name) {
+  const takes = recordings[name]; if (!takes) return false;
+  const src = ctx.createBufferSource(), g = ctx.createGain();
+  src.buffer = takes[Math.floor(Math.random() * takes.length)];
+  src.playbackRate.value = .94 + Math.random() * .12; // no two shots quite alike
+  g.gain.value = RECORDED[name][1];
+  src.connect(g).connect(master);
+  src.start();
+  return true;
+}
 
 function tone(freq, dur, { type = 'sine', vol = .3, slide = 0, delay = 0 } = {}) {
   const a = ac(); if (!a) return;
@@ -62,5 +91,5 @@ const SOUNDS = {
 
 export function sfx(name, arg) {
   if (muted || !SOUNDS[name] || (name === 'thunder' && !THUNDER_ENABLED)) return;
-  try { SOUNDS[name](arg); } catch (e) { /* audio is optional */ }
+  try { if (!(ac() && playRecording(name))) SOUNDS[name](arg); } catch (e) { /* audio is optional */ }
 }
