@@ -3,7 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
 import { SWELLS, swell, PACKET_GLSL } from './waves.js';
 import { WakeTrail, WAKE } from './wake.js';
-import { WAKE_GLSL, wakeSurface } from './wake-field.js';
+import { WAKE_GLSL, WAKE_UNIFORMS, wakeSurface } from './wake-field.js';
 export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
@@ -31,6 +31,7 @@ const vertex = /* glsl */`
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
+  varying vec2 vWakeSlope;
   ${PACKET_GLSL}
   ${WAKE_GLSL}
   void main() {
@@ -52,7 +53,12 @@ const vertex = /* glsl */`
       n.xz -= a * (packet.x * ph.yz * c + packet.yz * s);
       n.y -= ${CHOP.toFixed(2)} * k * a * packet.x * s;
     }
-    if(detail>0.001)h += wakeField(w.xz).x * detail;
+    vWakeSlope = vec2(0.0);
+    if(detail>0.001){
+      vec3 wake = wakeField(w.xz) * detail;
+      h += wake.x;
+      vWakeSlope = wake.yz;
+    }
     w.y += h;
     vWorld = w.xyz;
     vHeight = h;
@@ -131,10 +137,11 @@ const fragment = /* glsl */`
   uniform vec2 uCoastRot[${MAX_ISLES}]; // cos/sin of island yaw
   uniform vec2 uSeaCenter;
   uniform float uFarPlane;
-  ${WAKE_GLSL}
+  ${WAKE_UNIFORMS}
   varying vec3 vWorld;
   varying vec3 vNormal;
   varying float vHeight;
+  varying vec2 vWakeSlope;
 
   ${PACKET_GLSL}
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -191,9 +198,9 @@ const fragment = /* glsl */`
     float near = 1.0 - smoothstep(40.0, 230.0, dist);
     // Medium waves too short for the mesh: they only bend the light, with the same lean-in crests as the swell.
     vec3 n = vNormal;
-    // These short moving fronts need per-pixel normals as well as grid height.
-    // They reflect light as waves instead of painting white rails on the sea.
-    if(detail>0.001)n.xz -= wakeField(p).yz * detail;
+    // Reuse the analytic slopes already evaluated for grid displacement.
+    // Fine ocean ripples below remain per-pixel; the ship fronts use the mesh.
+    n.xz -= vWakeSlope;
     for (int i = 0; i < 4; i++) {
       float fi = float(i);
       vec2 d = normalize(vec2(cos(fi * 2.1 + 0.6), sin(fi * 2.1 + 0.6)));

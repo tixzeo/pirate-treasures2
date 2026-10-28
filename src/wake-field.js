@@ -43,13 +43,17 @@ export function wakeHeight(x,z,points=wakeSurface.points,ships=wakeSurface.ships
   return h;
 }
 
-// Value and analytic slopes. The same kernels are used in vertex displacement,
-// fragment normals and the GPU readback fixture, without another render pass.
-export const WAKE_GLSL = /* glsl */`
+export const WAKE_UNIFORMS = /* glsl */`
   uniform vec4 uShips[2];
   uniform vec2 uShipSize[2];
   uniform vec4 uTrail[${WAKE.capacity}];
   uniform vec4 uTrailShape[${WAKE.capacity}];
+`;
+
+// Value and analytic slopes, evaluated once per grid vertex. Rasterisation
+// interpolates those slopes for lighting, without another 30 kernels per pixel.
+export const WAKE_GLSL = /* glsl */`
+  ${WAKE_UNIFORMS}
   vec3 wakePulse(vec2 p, vec4 t, vec4 shape) {
     if(t.w<=0.0||t.z<0.0||t.z>=1.0||shape.z<=0.0)return vec3(0.0);
     vec2 off=p-t.xy;
