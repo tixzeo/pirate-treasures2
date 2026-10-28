@@ -3,7 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { coastAtlas, COAST_SIZE, COAST_RANGE } from './island-shape.js';
 import { SWELLS, swell, PACKET_GLSL } from './waves.js';
 import { WakeTrail, WAKE } from './wake.js';
-import { WAKE_GLSL, WAKE_UNIFORMS, wakeSurface } from './wake-field.js';
+import { WAKE_GLSL, WAKE_UNIFORMS, wakeSurface, BOW_WAVE } from './wake-field.js';
 export { swell, waveHeight } from './waves.js';
 
 const SIZE = 700, SEG = 220, STEP = SIZE / SEG;
@@ -189,6 +189,20 @@ const fragment = /* glsl */`
     return hull * smoothstep(-0.25, 0.9, u / size.x) * pace;
   }
 
+  // White water on the bow waves (wake-field.js bowWaves): a broken line along each arm of the V from the stem
+  // and fainter lace on the crests that run outwards from it.
+  float bowFoam(vec2 p, vec4 ship, vec2 size) {
+    if (abs(ship.w) <= 1.0 || size.x <= 0.0 || size.y <= 0.0) return 0.0;
+    vec2 f = vec2(-sin(ship.z), -cos(ship.z)) * sign(ship.w), d = p - ship.xy;
+    float b = size.x * 0.9 - dot(d, f);
+    if (b <= -1.0 || b >= ${BOW_WAVE.reach.toFixed(1)}) return 0.0;
+    float n = abs(dot(d, vec2(-f.y, f.x))) * ${Math.cos(BOW_WAVE.angle).toFixed(4)} - b * ${Math.sin(BOW_WAVE.angle).toFixed(4)};
+    float fade = smoothstep(-1.0, 3.0, b) * pow(1.0 - b / ${BOW_WAVE.reach.toFixed(1)}, 1.5) * smoothstep(1.0, 8.0, abs(ship.w));
+    float line = 1.0 - smoothstep(0.2, 2.0 + b * 0.05, abs(n - 0.3));
+    float crests = smoothstep(0.55, 1.0, cos(${BOW_WAVE.k.toFixed(4)} * (n - ${BOW_WAVE.run.toFixed(1)} * uWakeTime))) * (1.0 - smoothstep(0.5, ${BOW_WAVE.band.toFixed(1)}, n)) * step(0.0, n);
+    return max(line, crests * 0.45) * fade;
+  }
+
   void main() {
     vec2 p = vWorld.xz;
     vec2 gridOffset = abs(p-uSeaCenter);
@@ -287,19 +301,20 @@ const fragment = /* glsl */`
       vec4 shape = uTrailShape[i];
       vec2 off = p - t.xy;
       float along = dot(off, shape.xy), across = dot(off, vec2(-shape.y,shape.x));
-      float width = t.w * (0.7 + t.z * 1.1), extent = shape.w + t.z * 2.0;
+      float width = t.w * (0.9 + t.z * 1.6), extent = shape.w + t.z * 2.0;
       if (abs(along) > extent || abs(across) > width * 1.2) continue;
       // A small meander breaks the outline; no noise or texture lookup per patch.
       across += sin(along * 0.8 + dot(t.xy,vec2(1.7,2.3))) * width * 0.15;
       float deposit = 1.0 - smoothstep(0.05, 1.0, length(vec2(along/extent,across/width)));
-      wake = max(wake, deposit * pow(1.0-t.z,1.6) * shape.z);
+      wake = max(wake, deposit * pow(1.0-t.z,1.2) * shape.z);
     }
     float ships = max(shipFoam(p, uShips[0], uShipSize[0]), shipFoam(p, uShips[1], uShipSize[1]));
+    ships = max(ships, max(bowFoam(p, uShips[0], uShipSize[0]), bowFoam(p, uShips[1], uShipSize[1])));
     // Texture coverage stays porous even when hull, wake and surf overlap.
     float lace = texture2D(uFoam, p * 0.11 + uTime * vec2(0.012, 0.004)).a * 0.65 + texture2D(uFoam, p * 0.27 - uTime * vec2(0.006, 0.015)).a * 0.35;
     float breakup = smoothstep(0.23,0.72,noise(p * 0.19 + uTime * vec2(0.018,-0.011)));
     float grain = smoothstep(0.22,0.8,lace);
-    float shipFoamAmount = max(wake * 0.72, ships * 0.7) * mix(0.25,1.0,breakup);
+    float shipFoamAmount = max(wake * 0.85, ships * 0.7) * mix(0.25,1.0,breakup);
     float foam = max(max(crest * 0.48, surf * 0.64),shipFoamAmount) * grain;
     col = mix(col, vec3(0.95, 0.98, 1.0) * (0.2 + 0.8 * uLight), foam);
 
@@ -338,6 +353,7 @@ export class Sea {
       uSand: { value: new THREE.Color('#e9d9a6') },
       uShips: { value: [new THREE.Vector4(), new THREE.Vector4()] },
       uShipSize: { value: [new THREE.Vector2(1, 1), new THREE.Vector2(1, 1)] },
+      uWakeTime: { value: 0 },
       uSky: { value: new THREE.Color('#6fa8d6') },
       uHorizon: { value: new THREE.Color('#cfe6ef') },
       uFogColor: { value: fog.color },
@@ -411,6 +427,8 @@ export class Sea {
   // The grid follows the camera in whole cells so the waves stay put in the world.
   update(t, center) {
     this.uniforms.uTime.value = t;
+    // One period of the bow waves, so float precision holds however long the voyage.
+    this.uniforms.uWakeTime.value = wakeSurface.time = t % (Math.PI * 2 / (BOW_WAVE.k * BOW_WAVE.run));
     SWELLS.forEach((s, i) => { this.uniforms.uAmp.value[i] = s.amp * swell.k; });
     this.uniforms.uWhite.value = (swell.k - 1) * 1.1;
     this.mesh.position.set(Math.round(center.x / STEP) * STEP, 0, Math.round(center.z / STEP) * STEP);
