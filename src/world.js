@@ -18,6 +18,7 @@ import { DeckWalker, makeDeckZone } from './deck-walk.js';
 import { DeckCamera, CrewOcclusion } from './deck-camera.js';
 import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
+import { BOSS_REWARD, VICTORY_AT, advanceSinking, crossed, BOSS_LOOK, LOOK_UNTIL, easeBossLook } from './boss-finish.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
 const BALL_SPEED_H = 42;       // horizontal speed of a cannonball, m/s
@@ -105,6 +106,7 @@ export class World {
     this.camPitch = 0;
     this.camZoom = 1;
     this.camDragAt = -9;
+    this.bossLook = 0;     // share of the view turned toward Scar, eased
     const cam = this.player.mesh.userData.metrics.camera;
     this.camPos = new THREE.Vector3(0, cam.teleportUp, cam.resetBack);
     this.time = 0;
@@ -197,7 +199,7 @@ export class World {
 
   syncCrew() {
     const { tim, scar } = this.crew;
-    if (tim) tim.visible = !!this.bossGone;
+    if (tim) tim.visible = !!this.bossGone || this.boss.sinking >= VICTORY_AT;
     // Scar stays on his quarterdeck until the schooner is hit for good, then he is in his rowboat or out of sight.
     if (scar) {
       const boat = this.life.boat;
@@ -580,15 +582,17 @@ export class World {
     // Looking ahead of the bow from behind; the further the view is turned, the more it looks at the ship itself.
     const ahead = p.pos.clone().addScaledVector(f, cam.ahead).add(new THREE.Vector3(0, cam.lookY, 0));
     const look = ahead.lerp(p.pos.clone().setY(p.pos.y + cam.lookY), Math.min(1, Math.abs(Math.sin(this.camYaw / 2)) * 2));
-    if ((this.state === 'battle' && this.boss.hp > 0) || (this.boss.hp <= 0 && !this.bossGone)) look.lerp(this.boss.pos, .25);
+    const b = this.boss, watch = (this.state === 'battle' && b.hp > 0) || (b.hp <= 0 && !this.bossGone && b.sinking < LOOK_UNTIL);
+    this.bossLook = easeBossLook(this.bossLook, watch ? BOSS_LOOK : 0, dt);
+    if (this.bossLook > 1e-4) look.lerp(b.pos, this.bossLook);
     this.camera.lookAt(look);
   }
 
-  // About twelve seconds from the last hit to the last bubble; then the wreck is gone for good.
+  // Nine seconds from the last hit to the last bubble; the victory story starts once the hull is under.
   sinkBoss(dt) {
     const b = this.boss, before = b.sinking;
     b.throttle = 0; b.rudder = 0;
-    b.sinking = Math.min(1, b.sinking + dt / 12);
+    b.sinking = advanceSinking(b.sinking, dt);
     if (before === 0) {
       this.life.launchBoat(b, this.player.pos);
       this.syncCrew(); // Scar is off to his rowing boat
@@ -602,12 +606,14 @@ export class World {
       this.fx.puff('splash', at, { size: .5 + Math.random() * .6 });
     }
     if (before < .35 && b.sinking >= .35) { sfx('splash'); this.fx.burst('splash', b.pos.clone().setY(.5), 10, 1, 4); }
+    if (crossed(before, b.sinking, VICTORY_AT)) {
+      this.syncCrew(); // Tim climbs aboard
+      this.onVictory?.();
+    }
     if (b.sinking >= 1) {
       this.bossGone = true;
       this.scene.remove(b.mesh);
-      this.syncCrew(); // Tim climbs aboard
       this.fx.burst('splash', b.pos.clone().setY(.3), 6, .8, 2);
-      this.onBossGone && this.onBossGone();
     }
   }
 
@@ -647,7 +653,7 @@ export class World {
     sfx('win');
     this.ui.battleHud(null);
     this.ui.banner('«Каракатица» идёт ко дну!', 'Шрам прыгает в шлюпку. Смотрите, как шхуна уходит под воду.', 5000, false);
-    this.onGold && this.onGold(500);
+    this.onGold && this.onGold(BOSS_REWARD);
   }
 
   onShoreImpact(speed) {
