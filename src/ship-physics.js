@@ -32,7 +32,8 @@ export function advanceSteering({helm,yaw},rudder,speed,maxSpeed,turnRate,length
   return {helm:nextHelm,yaw:nextYaw,angle:target*dt+(yaw-target)*tau*(1-decay)};
 }
 
-export function advanceHeel(heel,speed,yaw,dt) {
-  const target=clamp(-Math.atan(speed*yaw/9.81)*.38,-HULL_PHYSICS.heelLimit,HULL_PHYSICS.heelLimit);
+// windHeel: the lean the wind puts on the sails (wind.js), added to the lean of the turn.
+export function advanceHeel(heel,speed,yaw,dt,windHeel=0) {
+  const target=clamp(-Math.atan(speed*yaw/9.81)*.38+(Number.isFinite(windHeel)?windHeel:0),-HULL_PHYSICS.heelLimit,HULL_PHYSICS.heelLimit);
   return target+(heel-target)*Math.exp(-Math.max(0,dt)/HULL_PHYSICS.heelTime);
 }

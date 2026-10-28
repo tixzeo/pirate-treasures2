@@ -3,6 +3,7 @@ import { waveHeight } from './sea.js';
 import { HullMotion } from './hull-motion.js';
 import { sampleHullWater } from './hull-water.js';
 import { advanceSurge, advanceSteering, advanceHeel, HULL_PHYSICS } from './ship-physics.js';
+import { sailDrive, offWind, windSpeedFactor, windHeel } from './wind.js';
 import { pbr } from './materials.js';
 import { part, boundsOf } from './kit.js';
 import { captureShipParts, fitShipLayout } from './ship-layout.js';
@@ -261,12 +262,16 @@ export class Vessel {
 
   update(dt, t) {
     const flooded=this.hp<=0||this.sinking>0;
-    this.speed = advanceSurge(this.speed,flooded?0:this.throttle,this.maxSpeed,dt,1+3*this.sinking);
+    // The wind (world.js hands every ship the same one) sets how much the sails are worth on this course.
+    const w=this.wind, sails=Math.max(0,this.throttle);
+    this.drive=w?sailDrive(offWind(this.heading,w.toward))*windSpeedFactor(w.speed):1;
+    const top=this.throttle>0?this.maxSpeed*this.drive:this.maxSpeed;
+    this.speed = advanceSurge(this.speed,flooded?0:this.throttle,top,dt,1+3*this.sinking);
     if(flooded)this.speed*=Math.exp(-HULL_PHYSICS.floodDrag*Math.max(0,dt));
     const steering=advanceSteering(this,flooded?0:this.rudder,this.speed,this.maxSpeed,this.turnRate,this.mesh.userData.length,dt);
     this.helm=steering.helm;this.yaw=steering.yaw;this.heading+=steering.angle;
     this.pos.addScaledVector(this.forward(), this.speed * dt);
-    this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt);
+    this.heel = advanceHeel(this.heel,this.speed,this.yaw,dt,w&&!flooded?windHeel(this.heading,w,sails)*Math.min(1,this.drive*1.2):0);
 
     const water = sampleHullWater(this.waterHeight, { x: this.pos.x, z: this.pos.z, heading: this.heading,
       length: this.mesh.userData.length, width: this.mesh.userData.width }, t);

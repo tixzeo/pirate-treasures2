@@ -1,0 +1,17 @@
+/* Wind dial: the compass bar's dark glass, the gold of the goal arrow. */
+.wind { position: absolute; left: 50%; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 22px); translate: -50% 0; display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px 4px 4px; border-radius: 26px; background: rgba(10, 29, 41, .55); border: 1px solid rgba(244, 234, 214, .25); pointer-events: none; }
+.wind svg { width: 40px; height: 40px; display: block; }
+.wind circle { fill: rgba(0, 0, 0, .25); stroke: rgba(244, 234, 214, .35); stroke-width: 1.2; }
+.wind .hull { fill: rgba(244, 234, 214, .55); }
+.wind .arrow path { fill: none; stroke: var(--gold); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.wind span { display: grid; line-height: 1.15; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.wind b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.wind small { font-size: 11px; color: var(--muted); }
+.wind.irons small { color: #ff9a8e; }
+#hud[data-control="deck"] .wind { display: none; }
+/* On a phone the bottom belongs to the wheel and the guns: the dial goes under the goal, on the right. */
+@media (max-width: 520px) {
+  .wind { bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 112px); left: auto; right: max(12px, env(safe-area-inset-right)); translate: none; }
+  .wind svg { width: 32px; height: 32px; }
+}

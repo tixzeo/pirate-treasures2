@@ -18,6 +18,7 @@ import { DeckWalker, makeDeckZone } from './deck-walk.js';
 import { DeckCamera, CrewOcclusion } from './deck-camera.js';
 import { boundsOf } from './ship-layout.js';
 import { ShoreImpact } from './shore-impact.js';
+import { Wind, tackFor } from './wind.js';
 import { BOSS_REWARD, VICTORY_AT, advanceSinking, crossed, BOSS_LOOK, LOOK_UNTIL, easeBossLook } from './boss-finish.js';
 
 const RELOAD = 3.2;            // seconds between broadsides of one side
@@ -98,6 +99,9 @@ export class World {
       return l;
     });
     this.life = new SeaLife(this);
+    // One wind for the whole sea: both ships sail by it.
+    this.wind = new Wind();
+    this.player.wind = this.boss.wind = this.wind;
     this.kitDone = kitReady.then(() => this.applyKit()).catch(e => console.warn('World kit not applied', e));
     this.loadCrew();
 
@@ -417,6 +421,7 @@ export class World {
     let goal = want;
     if (dist > 70) goal = Math.atan2(-toDir.x, -toDir.z);          // close in
     else if (dist < 28) goal = Math.atan2(toDir.x, toDir.z);       // open the range
+    goal = tackFor(goal, this.wind.toward);                          // no square-rigger sails into the wind
     let diff = THREE.MathUtils.euclideanModulo(goal - b.heading + Math.PI, Math.PI * 2) - Math.PI;
     b.rudder = THREE.MathUtils.clamp(diff * 2, -1, 1);
     b.throttle = dist > 70 ? 1 : .55;
@@ -432,7 +437,7 @@ export class World {
     const b = this.boss, to = this.bossHome.clone().sub(b.pos); to.y = 0;
     // Circle round the home point.
     const tangent = new THREE.Vector3(-to.z, 0, to.x).normalize().add(to.clone().normalize().multiplyScalar((to.length() - 40) / 40));
-    const goal = Math.atan2(-tangent.x, -tangent.z);
+    const goal = tackFor(Math.atan2(-tangent.x, -tangent.z), this.wind.toward);
     const diff = THREE.MathUtils.euclideanModulo(goal - b.heading + Math.PI, Math.PI * 2) - Math.PI;
     b.rudder = THREE.MathUtils.clamp(diff * 2, -1, 1);
     b.throttle = .45;
@@ -441,6 +446,7 @@ export class World {
   update(dt, input) {
     this.time += dt;
     const t = this.time, p = this.player;
+    this.wind.update(dt, this.atmo.storm);
     if (this.state === 'sail' || this.state === 'battle') {
       if (p.hp > 0) {
         p.throttle = input.throttle;
