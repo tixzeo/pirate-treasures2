@@ -251,6 +251,8 @@ export class World {
       this.helmCamera = { yaw: this.camYaw, pitch: this.camPitch, zoom: this.camZoom };
       this.crew.captain.position.set(walker.position.x, walker.position.y, walker.position.z);
       this.crew.captain.rotation.y = walker.facing;
+      // Place the view now: a fast display may draw this frame before the next physics step.
+      this.deckCamera.update(0, this.camera, this.player.mesh, walker, navigation);
     } else if (mode === 'helm') {
       this.deckView = this.deckCamera?.view();
       this.crewOcclusion?.restore(); this.crewOcclusion = null;

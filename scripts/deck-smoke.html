@@ -44,7 +44,7 @@ tap('KeyF');ok('F restores helm and captain anchor',world.seaControlMode==='helm
 ok('helm retains sails and releases guns',input.throttle===sails&&!w.document.getElementById('fireL').disabled);
 tap('KeyQ');tick(60);ok('helm cannons work again',world.reload.left>0||world.queue.length>0);
 world.fx.clearBalls();world.queue=[];world.reload.left=world.reload.right=0;
-w.document.getElementById('deckToggle').click();tick();ok('UI enters deck without keyboard',world.seaControlMode==='deck');
+w.document.getElementById('deckToggle').click();let drew=true;try{world.render()}catch(e){drew=String(e)}ok('deck view draws before the next physics step',drew===true&&!!world.deckCamera.eye,drew);tick();ok('UI enters deck without keyboard',world.seaControlMode==='deck');
 w.dispatchEvent(new w.Event('blur'));tick();ok('focus loss clears walking input',input.walkX===0&&input.walkZ===0&&!world.deckWalker.moving);
 world.ui.dialog({title:'Smoke',text:'Input focus',buttons:[['Close',()=>world.ui.closeDialog()]]});tick();ok('dialog safely exits deck',world.seaControlMode==='helm');world.ui.closeDialog();
 world.setSeaControlMode('deck');p.hp=0;tick();ok('damage safely exits deck',world.seaControlMode==='helm');p.hp=p.maxHp;p.sinking=0;world.lost=false;
