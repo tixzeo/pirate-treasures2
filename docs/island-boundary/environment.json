@@ -1,0 +1,341 @@
+{
+  "results": [
+    {
+      "name": "six distinct island assets",
+      "pass": true
+    },
+    {
+      "name": "coast texture has adequate resolution",
+      "pass": true
+    },
+    {
+      "name": "Остров Креста coast-clear berth 0",
+      "pass": true
+    },
+    {
+      "name": "Остров Креста pier-clear berth 0",
+      "pass": true
+    },
+    {
+      "name": "Остров Креста coast-clear berth 3.141592653589793",
+      "pass": true
+    },
+    {
+      "name": "Остров Креста pier-clear berth 3.141592653589793",
+      "pass": true
+    },
+    {
+      "name": "Остров Креста berth remains alongside pier",
+      "pass": true,
+      "detail": {
+        "along": 19.200000000000035,
+        "pier": 38.4,
+        "hull": 32
+      }
+    },
+    {
+      "name": "Бухта Попугая coast-clear berth 0",
+      "pass": true
+    },
+    {
+      "name": "Бухта Попугая pier-clear berth 0",
+      "pass": true
+    },
+    {
+      "name": "Бухта Попугая coast-clear berth 3.141592653589793",
+      "pass": true
+    },
+    {
+      "name": "Бухта Попугая pier-clear berth 3.141592653589793",
+      "pass": true
+    },
+    {
+      "name": "Бухта Попугая berth remains alongside pier",
+      "pass": true,
+      "detail": {
+        "along": 19.199999999999996,
+        "pier": 38.4,
+        "hull": 32
+      }
+    },
+    {
+      "name": "Остров Черепа coast-clear berth 0",
+      "pass": true
+    },
+    {
+      "name": "Остров Черепа pier-clear berth 0",
+      "pass": true
+    },
+    {
+      "name": "Остров Черепа coast-clear berth 3.141592653589793",
+      "pass": true
+    },
+    {
+      "name": "Остров Черепа pier-clear berth 3.141592653589793",
+      "pass": true
+    },
+    {
+      "name": "Остров Черепа berth remains alongside pier",
+      "pass": true,
+      "detail": {
+        "along": 21.199999999999974,
+        "pier": 38.4,
+        "hull": 32
+      }
+    },
+    {
+      "name": "island_lagoon has closed inland water",
+      "pass": true
+    },
+    {
+      "name": "island_lagoon entire basin masks the ocean",
+      "pass": true
+    },
+    {
+      "name": "island_cove_small has closed inland water",
+      "pass": true
+    },
+    {
+      "name": "island_cove_small entire basin masks the ocean",
+      "pass": true
+    },
+    {
+      "name": "island_jungle_ruins has closed inland water",
+      "pass": true
+    },
+    {
+      "name": "island_jungle_ruins entire basin masks the ocean",
+      "pass": true
+    },
+    {
+      "name": "crescent bay stays open",
+      "pass": true
+    },
+    {
+      "name": "island_lagoon has planted native props",
+      "pass": true
+    },
+    {
+      "name": "island_lagoon has opaque foundation",
+      "pass": true
+    },
+    {
+      "name": "island_lagoon instanced decoration matches budget",
+      "pass": true
+    },
+    {
+      "name": "island_lagoon terrain detail is active",
+      "pass": true
+    },
+    {
+      "name": "island_cove_small has planted native props",
+      "pass": true
+    },
+    {
+      "name": "island_cove_small has opaque foundation",
+      "pass": true
+    },
+    {
+      "name": "island_cove_small instanced decoration matches budget",
+      "pass": true
+    },
+    {
+      "name": "island_cove_small terrain detail is active",
+      "pass": true
+    },
+    {
+      "name": "island_volcanic has planted native props",
+      "pass": true
+    },
+    {
+      "name": "island_volcanic has opaque foundation",
+      "pass": true
+    },
+    {
+      "name": "island_volcanic instanced decoration matches budget",
+      "pass": true
+    },
+    {
+      "name": "island_volcanic terrain detail is active",
+      "pass": true
+    },
+    {
+      "name": "island_crescent_bay has planted native props",
+      "pass": true
+    },
+    {
+      "name": "island_crescent_bay has opaque foundation",
+      "pass": true
+    },
+    {
+      "name": "island_crescent_bay instanced decoration matches budget",
+      "pass": true
+    },
+    {
+      "name": "island_crescent_bay terrain detail is active",
+      "pass": true
+    },
+    {
+      "name": "island_jungle_ruins has planted native props",
+      "pass": true
+    },
+    {
+      "name": "island_jungle_ruins has opaque foundation",
+      "pass": true
+    },
+    {
+      "name": "island_jungle_ruins instanced decoration matches budget",
+      "pass": true
+    },
+    {
+      "name": "island_jungle_ruins terrain detail is active",
+      "pass": true
+    },
+    {
+      "name": "island_fortress_rock has planted native props",
+      "pass": true
+    },
+    {
+      "name": "island_fortress_rock has opaque foundation",
+      "pass": true
+    },
+    {
+      "name": "island_fortress_rock instanced decoration matches budget",
+      "pass": true
+    },
+    {
+      "name": "island_fortress_rock terrain detail is active",
+      "pass": true
+    },
+    {
+      "name": "volcano foot is supported",
+      "pass": true
+    },
+    {
+      "name": "barrel shell opaque ",
+      "pass": true
+    },
+    {
+      "name": "barrel shell opaque ",
+      "pass": true
+    }
+  ],
+  "metrics": {
+    "pond": {
+      "frame": 385,
+      "calls": 69,
+      "triangles": 136563,
+      "points": 900,
+      "lines": 0,
+      "geometries": 496,
+      "textures": 271
+    }
+  },
+  "quality": "medium",
+  "islands": [
+    {
+      "name": "island_lagoon",
+      "nativeProps": 23,
+      "foundation": {
+        "floor": -8.01657247543335,
+        "skirts": 216,
+        "caps": 3240,
+        "triangles": 3672,
+        "topTriangles": 3240
+      },
+      "scatter": {
+        "hut": 2,
+        "palm": 42,
+        "rock": 32
+      },
+      "scatterTriangles": 21946,
+      "batches": 8
+    },
+    {
+      "name": "island_cove_small",
+      "nativeProps": 14,
+      "foundation": {
+        "floor": -10.6762056350708,
+        "skirts": 216,
+        "caps": 3240,
+        "triangles": 3672,
+        "topTriangles": 3240
+      },
+      "scatter": {
+        "palm": 45,
+        "rock": 31
+      },
+      "scatterTriangles": 21860,
+      "batches": 7
+    },
+    {
+      "name": "island_volcanic",
+      "nativeProps": 12,
+      "foundation": {
+        "floor": -12.696660995483398,
+        "skirts": 328,
+        "caps": 4024,
+        "triangles": 4680,
+        "topTriangles": 4024
+      },
+      "scatter": {
+        "rock": 32
+      },
+      "scatterTriangles": 5440,
+      "batches": 2
+    },
+    {
+      "name": "island_crescent_bay",
+      "nativeProps": 10,
+      "foundation": {
+        "floor": -4.977504730224609,
+        "skirts": 544,
+        "caps": 3760,
+        "triangles": 4848,
+        "topTriangles": 3760
+      },
+      "scatter": {
+        "hut": 2,
+        "palm": 26,
+        "rock": 15
+      },
+      "scatterTriangles": 15604,
+      "batches": 7
+    },
+    {
+      "name": "island_jungle_ruins",
+      "nativeProps": 27,
+      "foundation": {
+        "floor": -7.673905849456787,
+        "skirts": 216,
+        "caps": 3240,
+        "triangles": 3672,
+        "topTriangles": 3240
+      },
+      "scatter": {
+        "hut": 2,
+        "palm": 42,
+        "rock": 27
+      },
+      "scatterTriangles": 21172,
+      "batches": 8
+    },
+    {
+      "name": "island_fortress_rock",
+      "nativeProps": 7,
+      "foundation": {
+        "floor": -5.002222061157227,
+        "skirts": 216,
+        "caps": 5160,
+        "triangles": 5592,
+        "topTriangles": 5160
+      },
+      "scatter": {
+        "palm": 15,
+        "rock": 9
+      },
+      "scatterTriangles": 6806,
+      "batches": 6
+    }
+  ]
+}

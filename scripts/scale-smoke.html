@@ -67,7 +67,7 @@ ok('battle active and camera finite',world.state==='battle'&&world.camera.positi
 const bossHp=world.boss.hp;world.onBall(ballAt(world.boss,[0,1,0],p));ok('boss damage',world.boss.hp===bossHp-6,world.boss.hp);
 world.fx.clearBalls();world.queue=[];world.state='sail';world.ui.battleHud(null);p.hp=p.maxHp;
 world.teleportBerth(world.isles[0],0);tick();
-w.game.land();ok('landing starts match',w.game.mode==='match'&&w.game.match.active,w.game.mode);
+w.game.land();ok('landing starts island activity',w.game.mode==='island'&&w.game.match.active,w.game.mode);
 // Leave via the real UI so the smoke check does not write victory progress.
 w.document.getElementById('leave').click();ok('return to sea',w.game.mode==='sea',w.game.mode);
 world.teleport(new THREE.Vector3(0,0,0),0);world.camYaw=-.85;world.camPitch=.35;tick(240);

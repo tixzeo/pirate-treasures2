@@ -4,6 +4,8 @@ import { part, hasKit } from './kit.js';
 import { flatten, mergeStatic } from './merge.js';
 import { ISLE_SCALE } from './islands.js';
 import { isIslandV3, fitIslandV3 } from './island-v3.js';
+import { makeGroundSurface, bindIslandGround } from './island-ground.js';
+export { groundHeightAt, islandBounds } from './island-ground.js';
 
 const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .95, flatShading: true, ...extra });
 
@@ -112,6 +114,7 @@ export function dressIsland(isl, name, dir, seed = 1) {
     });
     for (const ch of isl.children) ch.visible = false;
     isl.add(fitted.wrap); isl.userData.model = fitted.wrap;
+    bindIslandGround(isl,fitted.groundSurface,fitted.wrap);
     isl.userData.terrain = fitted.terrain; isl.userData.kit = name;
     return fitted.coast;
   }
@@ -202,6 +205,7 @@ export function dressIsland(isl, name, dir, seed = 1) {
   // Each kind of cargo and wreckage is half a dozen more draw calls, so only the islands you land on get them.
   if (dir) for (const kind of ['floating_plank_cluster', 'broken_mast_section', 'wrecked_hull_chunk'])
     place(kind, spot(/Beach/, 6, .75, 1.05), 1.8);
+  const groundSurface=makeGroundSurface(land);
   mergeStatic(model, /(?!)/);
 
   model.position.y = .35;
@@ -211,6 +215,7 @@ export function dressIsland(isl, name, dir, seed = 1) {
   else wrap.rotation.y = seed * 2.39;
   for (const ch of isl.children) ch.visible = false;
   isl.add(wrap);
+  bindIslandGround(isl,groundSurface,model);
   isl.userData.model = wrap;
   return coast || null;
 }

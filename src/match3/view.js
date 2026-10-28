@@ -140,6 +140,7 @@ export class Match3 {
 
   // level: { moves, types, name, score?, collect? }; onEnd(result) gets { win, gold, score }.
   start(level, onEnd) {
+    const visit=this.visit=(this.visit||0)+1;
     this.level = level;
     this.onEnd = onEnd;
     this.board = new Board({ types: level.types });
@@ -155,11 +156,13 @@ export class Match3 {
     this.busy = true;
     Promise.all(this.board.tiles().map(t => {
       const m = this.meshes.get(t.id);
-      return wait(t.c * 30 + (N - t.r) * 40).then(() => tween(m.position, { y: this.cellPos(t.r, t.c).y }, 450, ease.bounce));
-    })).then(() => { this.busy = false; });
+      return wait(t.c * 30 + (N - t.r) * 40).then(() => visit===this.visit?tween(m.position, { y: this.cellPos(t.r, t.c).y }, 450, ease.bounce):undefined);
+    })).then(() => { if(visit===this.visit)this.busy = false; });
     this.active = true;
     this.hud();
   }
+
+  stop(){this.active=false;this.visit=(this.visit||0)+1;this.hover=null;this.select(null)}
 
   // Артем's board tile in place of the built-in cells, each with its own materials so it can light up on its own.
   kitCells() {
@@ -283,22 +286,25 @@ export class Match3 {
   }
 
   async swap(a, b) {
+    const visit=this.visit;
     this.busy = true;
     this.idle = 0;
     const ma = this.meshes.get(this.board.at(a.r, a.c).id), mb = this.meshes.get(this.board.at(b.r, b.c).id);
     const pa = this.cellPos(a.r, a.c), pb = this.cellPos(b.r, b.c);
     sfx('swap');
     await Promise.all([tween(ma.position, { x: pb.x, y: pb.y }, 180), tween(mb.position, { x: pa.x, y: pa.y }, 180)]);
+    if(visit!==this.visit)return;
     const steps = this.board.trySwap(a, b);
     if (!steps) {
       sfx('wrong');
       await Promise.all([tween(ma.position, { x: pa.x, y: pa.y }, 180), tween(mb.position, { x: pb.x, y: pb.y }, 180)]);
+      if(visit!==this.visit)return;
       this.busy = false;
       return;
     }
     this.moves--;
     this.hud();
-    for (const s of steps) await this.play(s);
+    for (const s of steps){await this.play(s);if(visit!==this.visit)return}
     this.hud();
     this.busy = false;
     this.checkEnd();
@@ -316,12 +322,14 @@ export class Match3 {
   }
 
   async play(step) {
+    const visit=this.visit;
     if (step.kind === 'clear') {
       for (const f of step.fired) {
         const m = this.meshes.get(f.id);
         this.ui.flash(f.t === COMPASS ? 'Курс на сокровища!' : f.t === BARREL ? 'Бабах!' : 'Пли!');
         sfx(f.t === BARREL ? 'boom' : 'cannon');
         if (m) await tween(m.scale, { x: 1.7, y: 1.7, z: 1.7 }, 160);
+        if(visit!==this.visit)return;
         this.flashCells([f.id, ...f.hits], SPECIAL_GLOW[f.t]);
         for (const id of f.hits) { const h = this.meshes.get(id); if (h) this.fx.burst('fire', h.position, 3, .25, 2); }
         this.shake = .35;
@@ -345,9 +353,12 @@ export class Match3 {
         const m = this.meshes.get(id);
         if (!m) return null;
         this.fx.burst('spark', m.position, 4, .3, 3);
-        return tween(m.scale, { x: 0, y: 0, z: 0 }, 220, ease.inOut).then(() => { this.boardGroup.remove(m); this.meshes.delete(id); });
+        return tween(m.scale, { x: 0, y: 0, z: 0 }, 220, ease.inOut).then(() => {
+          if(visit!==this.visit||this.meshes.get(id)!==m)return;
+          this.boardGroup.remove(m);this.meshes.delete(id);
+        });
       }));
-      this.hud();
+      if(visit===this.visit)this.hud();
     } else if (step.kind === 'drop') {
       const moves = [];
       for (const f of step.fell) {
@@ -382,7 +393,10 @@ export class Match3 {
     this.select(null);
     const gold = win ? this.gold() + this.moves * 5 : Math.floor(this.gold() / 2);
     sfx(win ? 'win' : 'lose');
-    setTimeout(() => this.onEnd({ win, gold, score: this.board.score, movesLeft: this.moves }), 500);
+    // Keep the completion attached to the visit that finished. A new activity
+    // may start before this delay expires; never call its replacement callback.
+    const onEnd=this.onEnd, result={win,gold,score:this.board.score,movesLeft:this.moves};
+    setTimeout(() => onEnd(result), 500);
   }
 
   update(dt, t) {

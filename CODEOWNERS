@@ -1,1 +1,6 @@
-
+# Owners by zone (docs/AI_WORKFLOW.md §10). The last matching pattern wins.
+* @tixzeo
+/src/treasure/ @tixzeo @yanesenya
+/src/port/ @tixzeo @yanesenya
+/src/ui.js @tixzeo @yanesenya
+/docs/ @tixzeo
