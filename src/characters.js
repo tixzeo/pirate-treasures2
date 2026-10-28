@@ -13,11 +13,12 @@ const sources = new Map();
 
 function source(id) {
   if (!sources.has(id)) sources.set(id, loader.loadAsync(`${base}models/characters/${id}.glb`).then(g => {
-    // The rigged exports leave out normals and metalness (so everything comes out as bare metal).
+    // The early rigged exports leave out normals and metalness (so everything comes out as bare metal);
+    // the Meshy captain brings his own metallic-roughness map.
     g.scene.traverse(o => {
       if (!o.isMesh) return;
       if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
-      if (g.animations.length) { o.material.metalness = /gold|metal|steel|iron/i.test(o.material.name) ? .5 : 0; o.material.roughness = .8; }
+      if (g.animations.length && !o.material.metalnessMap) { o.material.metalness = /gold|metal|steel|iron/i.test(o.material.name) ? .5 : 0; o.material.roughness = .8; }
     });
     return g;
   }));
