@@ -4,6 +4,11 @@ import { WAKE } from './wake.js';
 // The wake is a bounded visual wave approximation, not a fluid solver.
 export const wakeSurface = { points: [], ships: [] };
 const K = Math.PI*2/9, AMPLITUDE=.42, SPREAD=4, BAND=4.5;
+// A hull faster than its waves spread leaves a Kelvin V: of each expanding ring only the stretch on the arms
+// of the V stays (where the ring touches the envelope, cos = SPREAD / speed), not the arc that wells up
+// behind the stern. Each ring also swells in over its first half second instead of appearing at once.
+const ARM=.2, FAST=[4.5,7], BIRTH=.08;
+const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
 const ZERO=Object.freeze({height:0,dx:0,dz:0});
 
 export function wakePulse(p,x,z) {
@@ -16,11 +21,16 @@ export function wakePulse(p,x,z) {
   const gate=Math.max(0,Math.min(1,(8-ox*p.fx-oz*p.fz)/12));
   if(Math.abs(q)>=1||gate===0)return ZERO;
   const envelope=(1-q*q)**2, phase=(r-radius)*K;
-  const a=AMPLITUDE*p.strength*(1-p.age)**1.5;
+  const a=AMPLITUDE*p.strength*(1-p.age)**1.5*smooth(0,BIRTH,p.age);
   const h=a*envelope*Math.cos(phase);
   const dr=a*(-4*q*(1-q*q)/band*Math.cos(phase)-envelope*K*Math.sin(phase));
   const g=gate*gate*(3-2*gate), dg=-6*gate*(1-gate)/12;
-  return {height:h*g,dx:dr*ox/r*g+h*dg*p.fx,dz:dr*oz/r*g+h*dg*p.fz};
+  // Speed from the patch length wake.js gives it; a slow hull keeps the plain half ring.
+  const speed=(p.extent??0)/(WAKE.interval*1.2), fast=smooth(FAST[0],FAST[1],speed), cosM=Math.min(.95,SPREAD/Math.max(speed,1e-6));
+  const nf=(ox*p.fx+oz*p.fz)/r, d=nf-cosM, arm=Math.exp(-d*d/(ARM*ARM)), da=-2*d/(ARM*ARM)*arm*fast/r;
+  const w=g*(1-fast)+arm*fast;
+  const wx=dg*p.fx*(1-fast)+da*(p.fx-nf*ox/r), wz=dg*p.fz*(1-fast)+da*(p.fz-nf*oz/r);
+  return {height:h*w,dx:dr*ox/r*w+h*wx,dz:dr*oz/r*w+h*wz};
 }
 
 export function bowPressure(ship,x,z) {
@@ -64,10 +74,15 @@ export const WAKE_GLSL = /* glsl */`
     float gate=clamp((8.0-dot(off,shape.xy))/12.0,0.0,1.0);
     if(abs(q)>=1.0||gate<=0.0)return vec3(0.0);
     float envelope=(1.0-q*q)*(1.0-q*q), phase=(r-radius)*${K};
-    float a=${AMPLITUDE}*shape.z*pow(1.0-t.z,1.5), h=a*envelope*cos(phase);
+    float a=${AMPLITUDE}*shape.z*pow(1.0-t.z,1.5)*smoothstep(0.0,${BIRTH.toFixed(2)},t.z), h=a*envelope*cos(phase);
     float dr=a*(-4.0*q*(1.0-q*q)/band*cos(phase)-envelope*${K}*sin(phase));
     float g=gate*gate*(3.0-2.0*gate), dg=-6.0*gate*(1.0-gate)/12.0;
-    return vec3(h*g,dr*off/r*g+h*dg*shape.xy);
+    float speed=shape.w/${(WAKE.interval*1.2).toFixed(4)}, fast=smoothstep(${FAST[0].toFixed(1)},${FAST[1].toFixed(1)},speed);
+    float cosM=min(0.95,${SPREAD.toFixed(1)}/max(speed,1e-6)), nf=dot(off,shape.xy)/r, d=nf-cosM;
+    float arm=exp(-d*d/${(ARM*ARM).toFixed(4)}), da=-2.0*d/${(ARM*ARM).toFixed(4)}*arm*fast/r;
+    float w=g*(1.0-fast)+arm*fast;
+    vec2 dw=dg*shape.xy*(1.0-fast)+da*(shape.xy-nf*off/r);
+    return vec3(h*w,dr*off/r*w+h*dw);
   }
   vec3 bowPressure(vec2 p,vec4 ship,vec2 size) {
     if(abs(ship.w)<=1.0||size.x<=0.0||size.y<=0.0)return vec3(0.0);
