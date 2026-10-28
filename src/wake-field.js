@@ -34,10 +34,12 @@ export function bowPressure(ship,x,z) {
   return {height:a*(1-e)**2, dx:-4*a*(1-e)*(u*fx/width+v*rx/cross), dz:-4*a*(1-e)*(u*fz/width+v*rz/cross)};
 }
 
-export function wakeHeight(x,z,points=wakeSurface.points,ships=wakeSurface.ships) {
+export function wakeHeight(x,z,points=wakeSurface.points,ships=wakeSurface.ships,excludeSource=null) {
   let h=0;
-  for(const p of points)h+=wakePulse(p,x,z).height;
-  for(const s of ships)h+=bowPressure(s,x,z).height;
+  // The rendered surface and floaters sample every source. A hull must not
+  // lift itself with the pressure wave or history it generated last step.
+  for(const p of points)if(excludeSource===null||p.key!==excludeSource)h+=wakePulse(p,x,z).height;
+  for(const s of ships)if(excludeSource===null||s.id!==excludeSource)h+=bowPressure(s,x,z).height;
   return h;
 }
 

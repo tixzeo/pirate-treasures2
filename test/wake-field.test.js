@@ -49,3 +49,22 @@ test('flotation includes the same local wave displacement instead of ignoring sh
     assert.ok(Math.abs(waveHeight(107,200,12)-before-wakeHeight(107,200))<1e-12);
   }finally{Object.assign(wakeSurface,old)}
 });
+
+test('excluding one hull removes its pressure and history but preserves the other hull and visible water',()=>{
+  const own={},other={},old={...wakeSurface};
+  const ownPulse={...pulse,key:own},otherPulse={...pulse,key:other,strength:.5};
+  const ownShip={...ship,id:own},otherShip={...ship,id:other,speed:6};
+  try{
+    wakeSurface.points=[ownPulse,otherPulse];wakeSurface.ships=[ownShip,otherShip];
+    for(const [x,z] of [[110,200],[100,185.6]]){
+      const visible=wakeHeight(x,z),remaining=wakeHeight(x,z,[otherPulse],[otherShip]);
+      assert.ok(visible>remaining&&remaining>0);
+      assert.equal(wakeHeight(x,z,undefined,undefined,own),remaining);
+      wakeSurface.points=[];wakeSurface.ships=[];const ambient=waveHeight(x,z,12);
+      wakeSurface.points=[ownPulse,otherPulse];wakeSurface.ships=[ownShip,otherShip];
+      assert.ok(Math.abs(waveHeight(x,z,12,own)-ambient-remaining)<1e-12);
+      assert.ok(Math.abs(waveHeight(x,z,12)-ambient-visible)<1e-12);
+    }
+    assert.equal(wakeSurface.points[0],ownPulse);assert.equal(wakeSurface.ships[0],ownShip);
+  }finally{Object.assign(wakeSurface,old)}
+});
