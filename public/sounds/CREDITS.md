@@ -11,6 +11,7 @@ The game's credits must name these authors, link the sound and the licence
 | File | Sound | Author |
 |---|---|---|
 | storm.ogg | [Storm wind.wav](https://freesound.org/people/juskiddink/sounds/59818/) | juskiddink |
+| hit-1.ogg | [Wood Debris Impact](https://freesound.org/people/Sabacky/sounds/774149/) | Sabacky |
 
 ## Public domain (CC0), credited out of courtesy
 
@@ -25,3 +26,5 @@ The game's credits must name these authors, link the sound and the licence
 | creak-1…4.ogg | [R28-03-Large Wood Ship Creaking.wav](https://freesound.org/people/craigsmith/sounds/483355/) | craigsmith |
 | gull-1.ogg | [Gull.wav](https://freesound.org/people/nigelcoop/sounds/73497/) | nigelcoop |
 | gull-2…4.ogg | [seagull.wav](https://freesound.org/people/speakingmusic/sounds/586831/) | speakingmusic |
+| cannon-1, cannon-2.ogg | [Cannon Shot](https://freesound.org/people/qubodup/sounds/187767/) | qubodup |
+| splash-1.ogg | [Big Water Splash](https://freesound.org/people/qubodup/sounds/442773/) | qubodup |
