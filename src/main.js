@@ -4,7 +4,7 @@ import { createMatch3Activity } from './match3/activity.js';
 import { registerIslandActivity, islandActivity } from './island-activity.js';
 import { UI } from './ui.js';
 import { updateTweens } from './tween.js';
-import { sfx, setMuted, muted } from './sound.js';
+import { sfx, setMuted, setVolume } from './sound.js';
 import { Ambience } from './ambience.js';
 import { loadSave, writeSave, clearSave } from './save.js';
 import { BOSS_REWARD } from './boss-finish.js';
@@ -13,11 +13,14 @@ import { portrait } from './characters.js';
 import { SAILS, sailIndex } from './ship.js';
 import { seaIntent } from './deck-walk.js';
 import { SimulationClock } from './simulation-clock.js';
+import { loadSettings, saveSettings } from './settings.js';
+import { createMenu } from './menu.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const settings = loadSettings();
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * settings.sharpness);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -64,7 +67,7 @@ resize();
 const input = { throttle: 0, rudder: 0 };
 const keys = new Set();
 addEventListener('keydown', e => {
-  if (mode !== 'sea' || ui.open || e.target.matches?.('input, textarea, [contenteditable="true"]')) return;
+  if (mode !== 'sea' || ui.open || menu.isOpen || e.target.matches?.('input, textarea, [contenteditable="true"]')) return;
   if (e.code === 'KeyF' && !e.repeat) { e.preventDefault(); toggleDeck(); return; }
   keys.add(e.code);
   if (world.seaControlMode === 'deck') return;
@@ -93,7 +96,8 @@ canvas.addEventListener('pointerdown', e => {
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerId !== dragId) return;
-  world.orbit(e.clientX - dragX, e.clientY - dragY);
+  const k = settings.camSpeed;
+  world.orbit((e.clientX - dragX) * k, (e.clientY - dragY) * k * (settings.invertY ? -1 : 1));
   dragX = e.clientX; dragY = e.clientY;
 });
 const dragEnd = e => { if (e.pointerId === dragId) dragId = null; };
@@ -142,7 +146,6 @@ function readKeys() {
 $('fireL').addEventListener('click', () => world.fire('left'));
 $('fireR').addEventListener('click', () => world.fire('right'));
 $('dock').addEventListener('click', () => land());
-$('soundBtn').addEventListener('click', e => { setMuted(!muted); e.target.setAttribute('aria-pressed', String(!muted)); e.target.textContent = muted ? 'Без звука' : 'Звук'; });
 
 // Landing: the ship drops anchor and the treasure hunt starts on the island.
 function land() {
@@ -205,10 +208,50 @@ ui.mode('intro');
 const clock = new THREE.Clock();
 const simulation = new SimulationClock();
 document.addEventListener('visibilitychange',()=>{simulation.remainder=0;clock.getDelta();});
+
+// Pause menu and the settings it changes. Each setting is applied here, where the game's pieces live.
+const APPLY = {
+  master: v => setVolume('master', v),
+  effects: v => setVolume('effects', v),
+  ambience: v => setVolume('ambience', v),
+  muted: v => setMuted(v),
+  quality: v => world.post.setQuality(v),
+  sharpness: v => { renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * v); resize(); },
+  shadows: v => { world.light.castShadow = v; },
+  showFps: v => menu.showFps(v),
+  fov: v => { world.camera.fov = v; world.camera.updateProjectionMatrix(); },
+  hints: v => document.body.classList.toggle('no-hints', !v),
+};
+const menu = createMenu({
+  settings,
+  quality: () => world.post.quality,
+  canRestart: () => mode !== 'intro',
+  onChange(key, value) {
+    if (key !== 'quality') { settings[key] = value; saveSettings(settings); }
+    APPLY[key]?.(value);
+  },
+  onOpen: clearControlInput,
+  onClose() { clock.getDelta(); sinceFrame = 0; },
+  onRestart: restart,
+});
+for (const [key, apply] of Object.entries(APPLY)) if (key in settings) apply(settings[key]);
+addEventListener('keydown', e => {
+  if (e.code !== 'Escape' || e.repeat) return;
+  e.preventDefault();
+  menu.toggle();
+});
+for (const id of ['menuBtn', 'menuBtnIsland']) $(id).addEventListener('click', () => menu.open());
+let sinceFrame = 0;
 renderer.setAnimationLoop(() => {
-  const elapsed=clock.getDelta();
-  if(document.hidden){simulation.remainder=0;return;}
-  simulation.advance(elapsed,(dt,t)=>{
+  sinceFrame += clock.getDelta();
+  if(document.hidden){simulation.remainder=0;sinceFrame=0;return;}
+  // A frame cap from the settings: skip browser frames until the next one is due.
+  if (settings.fpsCap && sinceFrame < 1 / settings.fpsCap - .002) return;
+  const elapsed = sinceFrame; sinceFrame = 0;
+  menu.tickFps();
+  // The menu pauses the game; the picture and the sea sound stay.
+  if (menu.isOpen) simulation.remainder = 0;
+  else simulation.advance(elapsed,(dt,t)=>{
   updateTweens(dt * 1000);
   if (mode === 'island') {
     activity.update(dt, t);
@@ -219,8 +262,19 @@ renderer.setAnimationLoop(() => {
   }
   },speed);
   if(mode==='island')activity.render();else world.render();
-  ambience.update(elapsed, world, mode === 'island' ? 'island' : mode === 'sea' ? 'sea' : 'quiet');
+  ambience.update(elapsed, world, mode === 'island' ? 'island' : mode === 'sea' ? 'sea' : 'quiet', menu.isOpen);
 });
+
+function restart() {
+  clearSave();
+  Object.assign(save, loadSave());
+  ui.setGold(save.gold);
+  ui.closeDialog();
+  if (mode === 'island') backToSea();
+  world.resetProgress();
+  setSails(1);
+  ui.banner('Прогресс сброшен', `Первая цель: ${world.target().name}`, 3000, false);
+}
 
 // God menu: testing tools for the prototype.
 const matchAvailable=()=>mode==='island'&&activity.kind==='match3';
@@ -229,16 +283,7 @@ setupGod({
   mode: () => mode,
   matchAvailable,
   isles: () => world.isles.map(i => ({ name: i.userData.def.name, done: i.userData.done })),
-  reset() {
-    clearSave();
-    Object.assign(save, loadSave());
-    ui.setGold(save.gold);
-    ui.closeDialog();
-    if (mode === 'island') backToSea();
-    world.resetProgress();
-    setSails(1);
-    ui.banner('Прогресс сброшен', `Первая цель: ${world.target().name}`, 3000, false);
-  },
+  reset: restart,
   addGold,
   teleport(i) {
     if (mode === 'island') backToSea();
