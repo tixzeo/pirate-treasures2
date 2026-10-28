@@ -2,7 +2,7 @@
 // creaks when the hull is worked, gulls calling from where they actually fly. Levels come from ambience-mix.js.
 // A recording that is missing or fails to decode is simply not heard.
 import { LOOPS, SHOTS, SILENT, shotFiles, loopLevels, creakRate, CREAK_GAP, gullRate, GULL_GAP, MAX_GULLS, chance } from './ambience-mix.js';
-import { audioOut, loadSound, muted } from './sound.js';
+import { audioOut, loadSound, muted, volumes } from './sound.js';
 
 // Loudness of each recording in the mix once it is levelled, so loopLevels can speak in plain 0..1.
 const TRIM = { hull: .5, bow: .7, surf: .9, rigging: .35, 'rigging-strong': .45, sails: .35, storm: .6, creak: .45, gull: .35 };
@@ -95,7 +95,7 @@ export class Ambience {
     if (!this.bus || !(dt > 0)) return;
     const ctx = this.ctx, now = ctx.currentTime, p = world.player, atmo = world.atmo || {};
     this.time += dt;
-    this.bus.gain.setTargetAtTime(muted || document.hidden ? 0 : 1, now, .15);
+    this.bus.gain.setTargetAtTime(muted || document.hidden ? 0 : volumes.ambience, now, .15);
     world.camera.updateMatrixWorld();
     this.listen(world.camera);
 

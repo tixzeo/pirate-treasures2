@@ -1,7 +1,10 @@
 // Sounds made on the fly with WebAudio, like in part one. Where a real recording exists (public/sounds)
 // it plays instead, once loaded; the made-up sound stays as the fallback.
-let ctx = null, master = null;
+let ctx = null, master = null, fx = null;
 export let muted = false;
+// Player volumes from the pause menu, 0..1: everything, the one-off effects, the sea around the ship.
+export const volumes = { master: 1, effects: 1, ambience: 1 };
+const MASTER = .5; // headroom: loud recordings overlap in a fight
 // Captain request, 26.10.2026: temporarily silence thunder during playtesting.
 export const THUNDER_ENABLED = false;
 
@@ -11,15 +14,23 @@ function ac() {
     if (!AC) return null;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = .5;
     master.connect(ctx.destination);
+    fx = ctx.createGain();
+    fx.connect(master);
+    applyVolumes();
     loadRecordings();
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
 }
 
-export function setMuted(v) { muted = v; }
+export function setMuted(v) { muted = v; applyVolumes(); }
+export function setVolume(name, v) { if (name in volumes) { volumes[name] = v; applyVolumes(); } }
+function applyVolumes() {
+  if (!ctx) return;
+  master.gain.setTargetAtTime(muted ? 0 : MASTER * volumes.master, ctx.currentTime, .03);
+  fx.gain.setTargetAtTime(volumes.effects, ctx.currentTime, .03);
+}
 
 // For sounds that live longer than one call, like the sea in ambience.js.
 export function audioOut() { const a = ac(); return a && { ctx: a, master }; }
@@ -43,7 +54,7 @@ function playRecording(name) {
   src.buffer = takes[Math.floor(Math.random() * takes.length)];
   src.playbackRate.value = .94 + Math.random() * .12; // no two shots quite alike
   g.gain.value = RECORDED[name][1];
-  src.connect(g).connect(master);
+  src.connect(g).connect(fx);
   src.start();
   return true;
 }
@@ -57,7 +68,7 @@ function tone(freq, dur, { type = 'sine', vol = .3, slide = 0, delay = 0 } = {})
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(.001, t + dur);
-  o.connect(g).connect(master);
+  o.connect(g).connect(fx);
   o.start(t); o.stop(t + dur + .05);
 }
 
@@ -70,7 +81,7 @@ function noise(dur, { vol = .5, freq = 800, delay = 0 } = {}) {
   const src = a.createBufferSource(); src.buffer = buf;
   const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq;
   const g = a.createGain(); g.gain.value = vol;
-  src.connect(f).connect(g).connect(master);
+  src.connect(f).connect(g).connect(fx);
   src.start(t);
 }
 
