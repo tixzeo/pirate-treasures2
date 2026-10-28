@@ -19,6 +19,9 @@ function ac() {
 
 export function setMuted(v) { muted = v; }
 
+// For sounds that live longer than one call, like the sea in ambience.js.
+export function audioOut() { const a = ac(); return a && { ctx: a, master }; }
+
 function tone(freq, dur, { type = 'sine', vol = .3, slide = 0, delay = 0 } = {}) {
   const a = ac(); if (!a) return;
   const t = a.currentTime + delay;

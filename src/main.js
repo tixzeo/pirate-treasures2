@@ -5,6 +5,7 @@ import { registerIslandActivity, islandActivity } from './island-activity.js';
 import { UI } from './ui.js';
 import { updateTweens } from './tween.js';
 import { sfx, setMuted, muted } from './sound.js';
+import { Ambience } from './ambience.js';
 import { loadSave, writeSave, clearSave } from './save.js';
 import { BOSS_REWARD } from './boss-finish.js';
 import { setupGod } from './god.js';
@@ -27,6 +28,7 @@ const world = new World(renderer, ui);
 registerIslandActivity(createMatch3Activity,{fallback:true});
 const activity=islandActivity();
 let mode = 'intro';
+const ambience = new Ambience();
 let speed = 1;
 const save = loadSave();
 const persist = () => {
@@ -190,6 +192,7 @@ $('leave').addEventListener('click', () => { if (!ui.open) backToSea(); });
 
 $('go').addEventListener('click', () => {
   $('intro').hidden = true;
+  ambience.start();
   mode = 'sea';
   ui.mode('sea');
   setSails(3); // half sail to start
@@ -216,6 +219,7 @@ renderer.setAnimationLoop(() => {
   }
   },speed);
   if(mode==='island')activity.render();else world.render();
+  ambience.update(elapsed, world, mode === 'island' ? 'island' : mode === 'sea' ? 'sea' : 'quiet');
 });
 
 // God menu: testing tools for the prototype.
@@ -271,5 +275,5 @@ setupGod({
 });
 
 // Handy for checks from the console.
-window.game = { world, land, input, readInput: readKeys, registerIslandActivity,
+window.game = { world, ambience, land, input, readInput: readKeys, registerIslandActivity,
   get match(){return matchCommand('view')??null},get activity(){return activity},get mode(){return mode} };
