@@ -48,6 +48,8 @@ export async function character(id, height = 1.7) {
     g.userData.actions = Object.fromEntries(src.animations.map(a => [a.name, mixer.clipAction(a)]));
     const idle = g.userData.actions.Idle;
     if (idle) { idle.play(); mixer.setTime(Math.random() * idle.getClip().duration); }
+    // Finger poses ride on their own bones on top of the body clip; at rest the hands hang relaxed.
+    g.userData.actions.HandsRelaxed?.play();
   }
   return g;
 }
